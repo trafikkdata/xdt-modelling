@@ -1,0 +1,11 @@
+data_paths:
+  raw:
+    traffic_links_json: "data/raw/traffic-links-2024.json"
+    traffic_links_geojson: "data/raw/traffic_links_2024.geojson"
+    directed_traffic_links_json: "data/raw/directed-traffic-links-2024.json"
+    directed_traffic_links_geojson: "data/raw/directed_traffic_links_2024.geojson"
+    aadt_results: "data/raw/traffic-links-aadt-data-2024.csv"
+    bus_counts: "data/raw/holdeplasspasseringer_entur.csv"
+    stops_on_traffic_links: "data/raw/Trafikklenker med holdeplasser.csv"
+  processed:
+    traffic_link_geometries: "data/processed/traffic_link_geometries.rds"
