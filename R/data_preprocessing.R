@@ -30,6 +30,7 @@ preprocess_traffic_data <- function(raw_data,
     process_traffic_volume(year = year) %>% 
     fill_missing_entries() %>% 
     process_list_columns() %>% 
+    remove_list_columns() %>% 
     standardize_data_types() %>% 
     engineer_features() %>% 
     scale_numeric_features(scale_cols = scale_cols) %>% 
@@ -37,7 +38,8 @@ preprocess_traffic_data <- function(raw_data,
                        bus_counts_data = bus_counts, 
                        lowest_certainty = lowest_certainty, 
                        no_of_days = no_of_days,
-                       location_uncertainties = location_uncertainties)
+                       location_uncertainties = location_uncertainties) %>% 
+    round_and_check_aadt()
 
   return(df)
 }
@@ -75,12 +77,13 @@ flatten_df <- function(df){
 fill_missing_entries <- function(df, columns_to_fill = NULL){
   if(is.null(columns_to_fill)){
     cols_with_missing <- names(which(colSums(is.na(df)) > 0))
-    columns_to_fill <- cols_with_missing[!stringr::str_starts(cols_with_missing, "bestDataSourceAadt_")]
+    columns_to_fill <- cols_with_missing[
+      !stringr::str_starts(cols_with_missing, "bestDataSourceAadt_")]
   }
   
   # Handle NA's
-  mode_df <- df %>% select(all_of(columns_to_fill)) %>% 
-    summarise(across(everything(), Mode)) %>% 
+  mode_df <- df %>% dplyr::select(dplyr::all_of(columns_to_fill)) %>% 
+    dplyr::summarise(dplyr::across(dplyr::everything(), Mode)) %>% 
     as.list()
   df <- df %>% tidyr::replace_na(mode_df)
   return(df)
@@ -98,10 +101,11 @@ process_list_columns <- function(df){
   # All list extraction logic
   names(df)[sapply(df, is.list)]
   
-  df <- mutate(df, 
-               across(c(functionalRoadClass, functionClass), 
+  df <- dplyr::mutate(df, 
+               dplyr::across(c(functionalRoadClass, functionClass), 
                       extract_smallest_element),
-               across(c(municipalityIds, countyIds, roadCategory, roadSystemReferences), 
+               dplyr::across(c(municipalityIds, countyIds, 
+                               roadCategory, roadSystemReferences), 
                       safely_extract_first_element))
   return(df)
 }
@@ -123,6 +127,15 @@ safely_extract_first_element <- Vectorize(function(x){
 
 
 
+remove_list_columns <- function(df){
+  list_cols <- sapply(df, is.list)
+  df_filtered <- df[, !list_cols]
+  return(df_filtered)
+}
+
+
+
+
 standardize_data_types <- function(df){
   # Final type conversions
   numeric_cols <- c("bestDataSourceAadt_trafficVolumeValue", 'numberOfEstablishments',
@@ -134,26 +147,11 @@ standardize_data_types <- function(df){
   logical_cols <- c('isNorwegianScenicRoute', 'isFerryRoute')
   
   df <- df %>% 
-    mutate(across(all_of(numeric_cols), as.numeric),
-           across(all_of(integer_cols), as.integer),
-           across(all_of(factor_cols), as.factor),
-           across(all_of(logical_cols), as.logical))
-  # 
-  # # This raises a warning related to the conversion of prelimAadt to numeric. 
-  # # The following displays the before/after values that raised this error.
-  # ind1 <- is.na(df$prelimAadt)
-  # ind2 <- is.na(df_correct_types$prelimAadt)
-  # differing <- which(ind1 != ind2)
-  # if(length(differing) != 0){
-  #   cat("\nThe conversion of prelimAadt caused the warning 'NAs introduced by coercion'.\n") 
-  #   cat("Here are the values that caused the warning:\n")
-  # }
-  # for(different in differing){
-  #   cat("Value in original df:\n")
-  #   print(df[different, "prelimAadt"])
-  #   cat("Value in converted df:\n")
-  #   print(df_correct_types[different, "prelimAadt"])
-  # }
+    dplyr::mutate(dplyr::across(dplyr::all_of(numeric_cols), as.numeric),
+                  dplyr::across(dplyr::all_of(integer_cols), as.integer),
+                  dplyr::across(dplyr::all_of(factor_cols), as.factor),
+                  dplyr::across(dplyr::all_of(logical_cols), as.logical))
+
   return(df)
 }
 
@@ -183,8 +181,8 @@ engineer_features <- function(df){
   )
   
   df <- df %>%
-    mutate(county = county_mapping[as.character("countyIds")],
-           roadSystem = gsub(" .*$", "", roadSystemReferences))
+    dplyr::mutate(county = county_mapping[as.character("countyIds")],
+                  roadSystem = gsub(" .*$", "", roadSystemReferences))
   
   return(df)
 }
@@ -222,7 +220,8 @@ add_busstop_counts <- function(df,
     dplyr::filter(is.na(stopCertainty) | stopCertainty == "" | 
                     stopCertainty %in% certainties_to_include)
   
-  df <- df %>% left_join(certain_counts, by = c("id", "parentTrafficLinkId"))
+  df <- df %>% dplyr::left_join(certain_counts, 
+                                by = c("id", "parentTrafficLinkId"))
   
   bus_ids <- which(!is.na(df$bus_aadt))
   
@@ -272,23 +271,23 @@ connect_busstop_counts_to_traffic_links <- function(
     dplyr::full_join(bus_counts, by = "stopPointRef") %>% 
     dplyr::group_by(id) %>% 
     dplyr::summarise(
-      stopsServeDifferentBuses = first(stopsServeDifferentBuses), # Assuming consistent within group
-      n_stops = n(),
+      stopsServeDifferentBuses = dplyr::first(stopsServeDifferentBuses), # Assuming consistent within group
+      n_stops = dplyr::n(),
       mean_count = mean(no_of_buses, na.rm = TRUE),
       sum_count = sum(no_of_buses, na.rm = TRUE),
-      sd_count = if_else(n() > 1, sd(no_of_buses, na.rm = TRUE), NA_real_),
+      sd_count = dplyr::if_else(dplyr::n() > 1, sd(no_of_buses, na.rm = TRUE), NA_real_),
       
       # Apply the appropriate method based on segment type
-      bus_aadt = case_when(
+      bus_aadt = dplyr::case_when(
         is.na(stopsServeDifferentBuses) ~ mean_count/no_of_days,           # Single stop: use the value
         stopsServeDifferentBuses == "FALSE" ~ mean_count/no_of_days,        # Rural: average
         stopsServeDifferentBuses == "TRUE" ~ sum_count/no_of_days           # Terminal: sum
       ),
       
       # Calculate uncertainty based on method
-      bus_sd = case_when(
+      bus_sd = dplyr::case_when(
         is.na(stopsServeDifferentBuses) ~ cv_uncertainty * bus_aadt/no_of_days,                    # Single: CV method
-        stopsServeDifferentBuses == "FALSE" ~ coalesce(sd_count, cv_uncertainty * bus_aadt)/no_of_days, # Rural: use SD, fallback to CV
+        stopsServeDifferentBuses == "FALSE" ~ dplyr::coalesce(sd_count, cv_uncertainty * bus_aadt)/no_of_days, # Rural: use SD, fallback to CV
         stopsServeDifferentBuses == "TRUE" ~ cv_uncertainty * sqrt(n_stops) * bus_aadt/no_of_days   # Terminal: error propagation
       ),
       
@@ -303,13 +302,25 @@ connect_busstop_counts_to_traffic_links <- function(
 add_stop_location_uncertainty <- function(bus_counts_on_traffic_links, 
                                           location_uncertainties = location_uncertainties){
   bus_counts_with_scaled_uncertainty <- bus_counts_on_traffic_links %>% 
-    mutate(bus_sd = case_when(
-      stopCertainty == "High" ~ bus_sd + location_uncertainties[1]*bus_aadt,
-      stopCertainty == "Medium" ~ bus_sd + location_uncertainties[2]*bus_aadt,
-      stopCertainty == "Low" ~ bus_sd + location_uncertainties[3]*bus_aadt
+    dplyr::mutate(
+      bus_sd = dplyr::case_when(
+        stopCertainty == "High" ~ bus_sd + location_uncertainties[1]*bus_aadt,
+        stopCertainty == "Medium" ~ bus_sd + location_uncertainties[2]*bus_aadt,
+        stopCertainty == "Low" ~ bus_sd + location_uncertainties[3]*bus_aadt
     ))
   return(bus_counts_with_scaled_uncertainty)
 }
+
+
+
+
+round_and_check_aadt <- function(df){
+  df$aadt <- round(df$aadt)
+  df$aadt[df$aadt < 0] <- 0
+  
+  return(df)
+}
+
 
 
 # Tester
