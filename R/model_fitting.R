@@ -1,3 +1,52 @@
+balance_predictions <- function(data, model){
+  # Flow constraints
+  A1 <- build_flow_constraints(data)
+  
+  n_p <- sum(!is.na(data$aadt)) # No. of AADT values
+  n_e <- nrow(data) # No. of traffic links (edges)
+  n_n <- nrow(A1) # No. of traffic nodes (with entering and exiting traffic)
+  
+  A2 <- build_measurement_matrix(data)
+  d <- na.omit(data$aadt)
+  Sigma_epsilon_mark <- diag(na.omit(data$aadt_sd)^2)
+  
+  mu_v <- round(model$summary.fitted.values[, "0.5quant"])
+  marginal_sds <- model$summary.fitted.values[, "sd"]
+  Sigma_v <- diag(marginal_sds^2) 
+  
+  A <- rbind(A1, A2)
+  #image(A)
+  
+  Sigma_epsilon <- as.matrix(bdiag(list(diag(rep(0, n_n)), 
+                                        Sigma_epsilon_mark)))
+  
+  b <- c(rep(0, n_n), d)
+  
+  temp <- A %*% Sigma_v %*% t(A)
+  Sigma_b <- A %*% Sigma_v %*% t(A) + Sigma_epsilon
+  Sigma_b <- (Sigma_b+t(Sigma_b))/2  # To ensure it is exactly symmetric in case of numerical inaccuracies
+  Sigma_b <- Sigma_b + diag(rep(1e-6, nrow(Sigma_b)))
+  Sigma_b_inv <- solve(Sigma_b,  tol = 1e-17)
+  
+  Sigma_vb <- Sigma_v %*% t(A)
+  
+  mu_v_given_b <- mu_v + Sigma_vb %*% Sigma_b_inv %*% (b - A %*% mu_v)
+  Sigma_v_given_b <- Sigma_v - Sigma_vb %*% Sigma_b_inv %*% t(Sigma_vb)
+  
+  # Some elements may be less than 0, set them to small number
+  mu_v_given_b[mu_v_given_b <= 0] <- 1
+  
+  # Return the data frame with added columns for inla model and balanced results.
+  result_data <- data %>% 
+    mutate(inla_pred = mu_v, 
+           inla_sd = marginal_sds,
+           balanced_pred = mu_v_given_b,
+           balanced_sd = Sigma_v_given_b)
+  
+  return(result_data)
+}
+
+
 #' Build adjacency matrix
 #'
 #' @param link_data Data frame with columns "startTrafficNodeId" and "endTrafficNodeId".
@@ -84,7 +133,7 @@ build_flow_constraints <- function(link_data) {
 #'
 build_measurement_matrix <- function(data) {
   n_e <- nrow(data)
-  measured_links <- which(!is.na(data$prelimAadt))
+  measured_links <- which(!is.na(data$aadt))
   n_p <- length(measured_links)
   
   # Create sparse matrix directly
@@ -97,3 +146,5 @@ build_measurement_matrix <- function(data) {
   
   return(A_2)
 }
+
+
