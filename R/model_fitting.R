@@ -1,6 +1,10 @@
-balance_predictions <- function(data, model){
+balance_predictions <- function(data, model, constraint_matrix = NULL){
   # Flow constraints
-  A1 <- build_flow_constraints(data)
+  if(is.null(constraint_matrix)){
+    A1 <- build_flow_constraints(data)
+  }else{
+    A1 <- constraint_matrix
+  }
   
   n_p <- sum(!is.na(data$aadt)) # No. of AADT values
   n_e <- nrow(data) # No. of traffic links (edges)
@@ -22,11 +26,10 @@ balance_predictions <- function(data, model){
   
   b <- c(rep(0, n_n), d)
   
-  temp <- A %*% Sigma_v %*% t(A)
   Sigma_b <- A %*% Sigma_v %*% t(A) + Sigma_epsilon
-  Sigma_b <- (Sigma_b+t(Sigma_b))/2  # To ensure it is exactly symmetric in case of numerical inaccuracies
+  Sigma_b <- (Sigma_b + t(Sigma_b))/2  # To ensure it is exactly symmetric in case of numerical inaccuracies
   Sigma_b <- Sigma_b + diag(rep(1e-6, nrow(Sigma_b)))
-  Sigma_b_inv <- solve(Sigma_b,  tol = 1e-17)
+  Sigma_b_inv <- solve(Sigma_b, tol = 1e-17)
   
   Sigma_vb <- Sigma_v %*% t(A)
   
@@ -137,7 +140,7 @@ build_measurement_matrix <- function(data) {
   n_p <- length(measured_links)
   
   # Create sparse matrix directly
-  A_2 <- sparseMatrix(
+  A_2 <- Matrix::sparseMatrix(
     i = 1:n_p,           # row indices
     j = measured_links,   # column indices
     x = 1,               # values (all 1s)
