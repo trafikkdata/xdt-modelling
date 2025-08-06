@@ -40,6 +40,8 @@ preprocess_traffic_data <- function(raw_data,
                        no_of_days = no_of_days,
                        location_uncertainties = location_uncertainties) %>% 
     round_and_check_aadt()
+  
+  check_data_completeness(df)
 
   return(df)
 }
@@ -304,6 +306,7 @@ add_stop_location_uncertainty <- function(bus_counts_on_traffic_links,
   bus_counts_with_scaled_uncertainty <- bus_counts_on_traffic_links %>% 
     dplyr::mutate(
       bus_sd = dplyr::case_when(
+        is.na(stopCertainty) | stopCertainty == "" ~ bus_sd, 
         stopCertainty == "High" ~ bus_sd + location_uncertainties[1]*bus_aadt,
         stopCertainty == "Medium" ~ bus_sd + location_uncertainties[2]*bus_aadt,
         stopCertainty == "Low" ~ bus_sd + location_uncertainties[3]*bus_aadt
@@ -363,8 +366,15 @@ validate_data_ranges <- function(){
   # AADT > 0, etc.
 }
 
-check_data_completeness <- function(){
+check_data_completeness <- function(df){
   # Missing values?
+  # Check that the number of missing values is the same for predictions and uncertainties.
+  missing_preds <- sum(is.na(df$aadt))
+  missing_sds <- sum(is.na(df$aadt_sd))
+  if(missing_sds != missing_preds){
+    warning("The number of missing values in 'aadt' is not the same as the number of missing values in 'aadt_sd'. This will lead to problems in the balancing procedure.")
+  }
+  # Check for missing values in relevant columns
 }
 
 validate_data_types <- function(){
