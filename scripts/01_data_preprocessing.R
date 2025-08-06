@@ -38,3 +38,15 @@ geometry_id <- directed_traffic_links_geojson %>%
 
 saveRDS(geometry_id, "data/processed/traffic_link_geometries.rds")
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Create adjacency and constraint matrix ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# WARNING: This takes a while to run, maybe around 30 minutes.
+source("R/model_fitting.R")
+
+adj_sparse <- build_adjacency_matrix(preprocessed_data)
+saveRDS(adj_sparse, "data/processed/adjacency_matrix_2024.rds")
+
+constraint_matrix <- build_flow_constraints(preprocessed_data)
+saveRDS(constraint_matrix, "data/processed/constraint_matrix_2024.rds")
+
