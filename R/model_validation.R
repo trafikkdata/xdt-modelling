@@ -1,60 +1,3 @@
-eale_threshold <- function(aadt_pred){
-  # Threshold function for eALE for balanced AADT
-  #  Args:
-  #      aadt: BalancedAadt
-  #  Returns: Maximum allowed value for eALE for given balanced AADT
-  
-  # Calculate the sigmoid value at 1000 outside the conditional branches
-  sigmoid_value_at_1000 <- 2 - (1.6 / (1 + exp(-0.01 * (1000 - 500))))
-  
-  # Calculate value at 10000
-  value_at_10000 <- sigmoid_value_at_1000 - 0.15 * ((10000 - 1000) / 9000)^0.5
-  
-  dplyr::case_when(
-    # Sigmoid part: Start high and decrease to about 40% at 1000
-    aadt_pred <= 1000  ~ 2 - (1.6 / (1 + exp(-0.01 * (aadt_pred - 500)))),
-    # Transition curve from 1000 to 10000, aiming to reach around 25% at 10000
-    aadt_pred <= 10000 ~ sigmoid_value_at_1000 - 0.15 * ((aadt_pred - 1000) / 9000)^0.5,
-    # Custom decreasing function from 10000 to 50000, reaching 20% at 50000
-    aadt_pred <= 50000 ~ value_at_10000 - 0.06 * ((aadt_pred - 10000) / 40000)^0.5,
-    TRUE               ~ 0.20
-  )
-}
-
-estimate_standard_error <- function(aadt) {
-  dplyr::case_when(
-    aadt < 500    ~ 40,
-    aadt < 1000   ~ 100,
-    aadt < 5000   ~ 200,
-    aadt < 10000  ~ 400,
-    aadt < 30000  ~ 1000,
-    TRUE          ~ 2000
-  )
-}
-
-autoapprove <- function(aadt, aadt_pred, aadt_pred_lower, aadt_pred_upper){
-  #aadt_pred <- ROUND THIS ACCORDING TO RULES?
-  threshold <- eale_threshold(aadt_pred)
-  eALE <- exp(abs(log(aadt) - log(aadt_pred))) -1
-  approved_eale <- eALE < threshold
-  
-  aadt_lower <- aadt - 1.96*estimate_standard_error(aadt)
-  aadt_upper <- aadt + 1.96*estimate_standard_error(aadt)
-  
-  approved_lower_bound <- aadt_pred_lower < aadt_upper
-  approved_upper_bound <- aadt_pred_upper > aadt_lower
-  
-  approved <- approved_eale & approved_lower_bound & approved_upper_bound
-  # return(data.frame(aadt_lower = aadt_lower, aadt = aadt, aadt_upper = aadt_upper,
-  #                  aadt_pred_lower = aadt_pred_lower, aadt_pred = aadt_pred, 
-  #                  aadt_pred_upper = aadt_pred_upper,
-  #                  approved_eale = approved_eale,
-  #                  approved_lower_bound = approved_lower_bound,
-  #                  approved_upper_bound = approved_upper_bound,
-  #                  id = 1:length(aadt)))
-  return(approved)
-}
-
 calculate_approved <- function(model = NULL, 
                                pred = round(model$summary.fitted.values[, "0.5quant"]), 
                                sd = round(model$summary.fitted.values[, "sd"]), 
@@ -112,4 +55,65 @@ calculate_approved <- function(model = NULL,
   
   return(list(approved = approved, retta = data, uretta = uretta_med_manuell))
 }
+
+autoapprove <- function(aadt, aadt_pred, aadt_pred_lower, aadt_pred_upper){
+  #aadt_pred <- ROUND THIS ACCORDING TO RULES?
+  threshold <- eale_threshold(aadt_pred)
+  eALE <- exp(abs(log(aadt) - log(aadt_pred))) -1
+  approved_eale <- eALE < threshold
+  
+  aadt_lower <- aadt - 1.96*estimate_standard_error(aadt)
+  aadt_upper <- aadt + 1.96*estimate_standard_error(aadt)
+  
+  approved_lower_bound <- aadt_pred_lower < aadt_upper
+  approved_upper_bound <- aadt_pred_upper > aadt_lower
+  
+  approved <- approved_eale & approved_lower_bound & approved_upper_bound
+  # return(data.frame(aadt_lower = aadt_lower, aadt = aadt, aadt_upper = aadt_upper,
+  #                  aadt_pred_lower = aadt_pred_lower, aadt_pred = aadt_pred, 
+  #                  aadt_pred_upper = aadt_pred_upper,
+  #                  approved_eale = approved_eale,
+  #                  approved_lower_bound = approved_lower_bound,
+  #                  approved_upper_bound = approved_upper_bound,
+  #                  id = 1:length(aadt)))
+  return(approved)
+}
+
+eale_threshold <- function(aadt_pred){
+  # Threshold function for eALE for balanced AADT
+  #  Args:
+  #      aadt: BalancedAadt
+  #  Returns: Maximum allowed value for eALE for given balanced AADT
+  
+  # Calculate the sigmoid value at 1000 outside the conditional branches
+  sigmoid_value_at_1000 <- 2 - (1.6 / (1 + exp(-0.01 * (1000 - 500))))
+  
+  # Calculate value at 10000
+  value_at_10000 <- sigmoid_value_at_1000 - 0.15 * ((10000 - 1000) / 9000)^0.5
+  
+  dplyr::case_when(
+    # Sigmoid part: Start high and decrease to about 40% at 1000
+    aadt_pred <= 1000  ~ 2 - (1.6 / (1 + exp(-0.01 * (aadt_pred - 500)))),
+    # Transition curve from 1000 to 10000, aiming to reach around 25% at 10000
+    aadt_pred <= 10000 ~ sigmoid_value_at_1000 - 0.15 * ((aadt_pred - 1000) / 9000)^0.5,
+    # Custom decreasing function from 10000 to 50000, reaching 20% at 50000
+    aadt_pred <= 50000 ~ value_at_10000 - 0.06 * ((aadt_pred - 10000) / 40000)^0.5,
+    TRUE               ~ 0.20
+  )
+}
+
+estimate_standard_error <- function(aadt) {
+  dplyr::case_when(
+    aadt < 500    ~ 40,
+    aadt < 1000   ~ 100,
+    aadt < 5000   ~ 200,
+    aadt < 10000  ~ 400,
+    aadt < 30000  ~ 1000,
+    TRUE          ~ 2000
+  )
+}
+
+
+
+
 
