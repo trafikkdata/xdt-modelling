@@ -7,16 +7,21 @@
 #' @export
 #'
 #' @examples
-add_geometry_to_traffic_links <- function(df, id_name = "id"){
+add_geometry_to_traffic_links <- function(df, id_name = "id", directed = TRUE){
   # Input: dataframe with id column.
   # Output: the same data frame, now with geometry column. 
   
   geom <- readRDS("data/processed/traffic_link_geometries.rds")
   
-  # Create a named vector for the join
-  join_vector <- setNames("id", id_name)
+  id_name_geom <- ifelse(directed, "id", "parentTrafficLinkId")
   
-  df_geom <- dplyr::full_join(df, geom, by = join_vector) |> sf::st_as_sf()
+  # Leave out the non-relevant id column
+  geom <- dplyr::select(geom, all_of(c(id_name_geom, "geometry")))
+    
+  # Create a named vector for the join
+  join_vector <- setNames(id_name_geom, id_name)
+  
+  df_geom <- dplyr::left_join(df, geom, by = join_vector) |> sf::st_as_sf()
   
   return(df_geom)
 }
