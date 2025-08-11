@@ -315,7 +315,10 @@ add_stop_location_uncertainty <- function(bus_counts_on_traffic_links,
 }
 
 
-
+quality_check_bus <- function(){
+  # Remove data for bus stops where the counts are less than 10 or more than 1000. 
+  # These are both very unlikely.
+}
 
 round_and_check_aadt <- function(df){
   df$aadt <- round(df$aadt)
