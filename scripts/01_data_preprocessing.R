@@ -34,7 +34,7 @@ saveRDS(preprocessed_data, "data/processed/preprocessed_data.rds")
 # Generate data with only id and geometry ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 geometry_id <- directed_traffic_links_geojson %>% 
-  dplyr::select(id, geometry)
+  dplyr::select(id, parentTrafficLinkId, geometry)
 
 saveRDS(geometry_id, "data/processed/traffic_link_geometries.rds")
 
