@@ -14,6 +14,16 @@ directed_traffic_links_geojson <- load_data(config$data_paths$raw$directed_traff
 bus_counts <- load_data(config$data_paths$raw$bus_counts)
 stops_on_traffic_links <- load_data(config$data_paths$raw$stops_on_traffic_links)
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add bus counts to traffic links ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+bus_counts_on_traffic_links <- connect_busstop_counts_to_traffic_links(
+  stops_on_traffic_links_data = stops_on_traffic_links,
+  bus_counts_data = bus_counts, 
+  no_of_days = 366,
+  location_uncertainties = c(0, 0.5, 1.5))
+
+saveRDS(bus_counts_on_traffic_links, "data/processed/bus_counts_on_traffic_links.rds")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Preprocess directed traffic links (without geometry) ----
