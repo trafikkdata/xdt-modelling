@@ -1,11 +1,14 @@
 calculate_approved <- function(model = NULL, 
                                pred = round(model$summary.fitted.values[, "0.5quant"]), 
                                sd = round(model$summary.fitted.values[, "sd"]), 
-                               data, data_manual, model_name = "inla"){
+                               data, data_manual, truth_name = "ÅDT.offisiell", model_name = "inla"){
   
   # Extract predictions
   data$pred <- pred
   data$sd <- sd
+  
+  # Check that truth column is numeric
+  data_manual[[truth_name]] <- as.numeric(data_manual[[truth_name]])
   
   ## If NaN or above 20,000, cap the value to 20,000
   data$sd[is.na(data$sd) | data$sd > 20000] <- 20000
@@ -14,7 +17,7 @@ calculate_approved <- function(model = NULL,
     return(sqrt(sum(sd^2)))
   }
   
-  # Aggreger til uretta lenker
+  # Aggregate to undirected links
   data_uretta <- data %>% dplyr::select(parentTrafficLinkId, pred, sd) %>%
     group_by(parentTrafficLinkId) %>% 
     summarise(pred = sum(pred),
@@ -22,9 +25,9 @@ calculate_approved <- function(model = NULL,
   
   uretta_med_manuell <- data_manual %>% 
     full_join(data_uretta, by = join_by(ID == parentTrafficLinkId)) %>% 
-    mutate(ÅDT.offisiell = as.numeric(ÅDT.offisiell)) %>% 
-    tidyr::drop_na(all_of(c("ÅDT.offisiell", "pred"))) %>% 
-    mutate(approved = autoapprove(aadt = ÅDT.offisiell, 
+    mutate(!!truth_name := as.numeric(.data[[truth_name]])) %>% 
+    tidyr::drop_na(all_of(c(truth_name, "pred"))) %>% 
+    mutate(approved = autoapprove(aadt = .data[[truth_name]], 
                                   aadt_pred = pred, 
                                   aadt_pred_lower = pred - 1.96*sd,
                                   aadt_pred_upper = pred + 1.96*sd))
@@ -38,7 +41,7 @@ calculate_approved <- function(model = NULL,
   lenker_uten_trp$nedre_grense <- lenker_uten_trp$pred - 1.96*lenker_uten_trp$sd
   lenker_uten_trp$ovre_grense <- lenker_uten_trp$pred + 1.96*lenker_uten_trp$sd # Eller hent ut disse kvantilene direkte fra INLA
   
-  lenker_uten_trp$dekket <- lenker_uten_trp$ÅDT.offisiell > lenker_uten_trp$nedre_grense & lenker_uten_trp$ÅDT.offisiell < lenker_uten_trp$ovre_grense
+  lenker_uten_trp$dekket <- lenker_uten_trp[[truth_name]] > lenker_uten_trp$nedre_grense & lenker_uten_trp[[truth_name]] < lenker_uten_trp$ovre_grense
   dekningsandel <- sum(lenker_uten_trp$dekket)/nrow(lenker_uten_trp)
   
   approved <- data.frame(model = model_name, 
