@@ -28,12 +28,12 @@ preprocess_traffic_data <- function(raw_data,
   
   df <- raw_data %>% 
     process_traffic_volume(year = year) %>% 
-    fill_missing_entries() %>% 
+    # fill_missing_entries() %>% 
     process_list_columns() %>% 
     remove_list_columns() %>% 
     standardize_data_types() %>% 
-    engineer_features() %>% 
-    scale_numeric_features(scale_cols = scale_cols) %>% 
+    # engineer_features() %>% 
+    # scale_numeric_features(scale_cols = scale_cols) %>% 
     add_busstop_counts(stops_on_traffic_links_data = stops_on_traffic_links, 
                        bus_counts_data = bus_counts, 
                        lowest_certainty = lowest_certainty, 
@@ -72,30 +72,6 @@ flatten_df <- function(df){
   
   return(df_flattened)
 }
-
-
-
-
-fill_missing_entries <- function(df, columns_to_fill = NULL){
-  if(is.null(columns_to_fill)){
-    cols_with_missing <- names(which(colSums(is.na(df)) > 0))
-    columns_to_fill <- cols_with_missing[
-      !stringr::str_starts(cols_with_missing, "bestDataSourceAadt_")]
-  }
-  
-  # Handle NA's
-  mode_df <- df %>% dplyr::select(dplyr::all_of(columns_to_fill)) %>% 
-    dplyr::summarise(dplyr::across(dplyr::everything(), Mode)) %>% 
-    as.list()
-  df <- df %>% tidyr::replace_na(mode_df)
-  return(df)
-}
-
-Mode <- function(x) {
-  ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
-}
-
 
 
 
@@ -140,13 +116,16 @@ remove_list_columns <- function(df){
 
 standardize_data_types <- function(df){
   # Final type conversions
-  numeric_cols <- c("bestDataSourceAadt_trafficVolumeValue", 'numberOfEstablishments',
-                    'numberOfEmployees', 'urbanRatio', 'numberOfInhabitants')
-  integer_cols <- c("bestDataSourceAadt_year")
-  factor_cols <- c('roadCategory', 'highestSpeedLimit', 
-                   'functionalRoadClass', 'functionClass',
-                   'maxLanes', 'minLanes', 'roadSystemReferences')
-  logical_cols <- c('isNorwegianScenicRoute', 'isFerryRoute')
+  numeric_cols <- c("bestDataSourceAadt_trafficVolumeValue", "length",
+                    'numberOfEstablishments', 'numberOfEmployees', 
+                    'urbanRatio', 'numberOfInhabitants', "lastYearAadt")
+  integer_cols <- c("yearAppliesTo", "bestDataSourceAadt_year")
+  factor_cols <- c('functionalRoadClass', 'functionClass',
+                   'highestSpeedLimit', "lowestSpeedLimit", 
+                   "municipalityIds", "countyIds",'roadCategory', 
+                   'maxLanes', 'minLanes')
+  logical_cols <- c('isNorwegianScenicRoute', 'isFerryRoute', "isRamp", 
+                    "isBlocked", "isInvalid", "hasOnlyPublicTransportLanes")
   
   df <- df %>% 
     dplyr::mutate(dplyr::across(dplyr::all_of(numeric_cols), as.numeric),
@@ -159,53 +138,13 @@ standardize_data_types <- function(df){
 
 
 
-
-engineer_features <- function(df){
-  # logLength, etc.
-  
-  # County names from codes
-  county_mapping <- c(
-    "3" = 'Oslo',
-    "11" = 'Rogaland',
-    "15" = 'Møre og Romsdal',
-    "18" = 'Nordland',
-    "31" = 'Østfold',
-    "32" = 'Akershus',
-    "33" = 'Buskerud',
-    "34" = 'Innlandet',
-    "39" = 'Vestfold',
-    "40" = 'Telemark',
-    "42" = 'Agder',
-    "46" = 'Vestland',
-    "50" = 'Trøndelag',
-    "55" = 'Troms',
-    "56" = 'Finnmark'
-  )
-  
-  df <- df %>%
-    dplyr::mutate(county = county_mapping[as.character("countyIds")],
-                  roadSystem = gsub(" .*$", "", roadSystemReferences))
-  
-  return(df)
-}
-
-
-
-
-scale_numeric_features <- function(df, scale_cols){
-  df[scale_cols] <- scale(df[scale_cols])
-  return(df)
-}
-
-
-
-
 add_busstop_counts <- function(df, 
                                stops_on_traffic_links_data, 
                                bus_counts_data,
                                lowest_certainty, 
                                no_of_days, 
                                location_uncertainties){
+  
   bus_counts_on_traffic_links <- connect_busstop_counts_to_traffic_links(
     stops_on_traffic_links_data, 
     bus_counts, 
