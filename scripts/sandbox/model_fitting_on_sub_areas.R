@@ -1,4 +1,4 @@
-# Testing model in various sub-areas (Trondheim, ??lesund and Finnmark)
+# Testing model in various sub-areas (Trondheim, Ålesund and Finnmark)
 
 library(sf)
 library(dplyr)
@@ -14,6 +14,8 @@ trondheim_data <- read_sf("data/processed/trondheim_data.geojson")
 
 trondheim_data$aadt_without_bus <- trondheim_data$aadt
 trondheim_data$aadt_without_bus[!is.na(trondheim_data$bus_aadt)] <- NA
+trondheim_data$aadt_without_bus_sd <- trondheim_data$aadt_sd
+trondheim_data$aadt_without_bus_sd[!is.na(trondheim_data$bus_aadt)] <- NA
 
 # Create spatial index - this is simply the row number for each traffic link
 trondheim_data$spatial.idx <- 1:nrow(trondheim_data)
@@ -46,5 +48,10 @@ mod_bus <- inla(formula_bus,
 summary(mod_bus)
 
 
-trondheim_data <- balance_predictions(data = trondheim_data, model = mod_bus)
+trd_relevant <- dplyr::select(trondheim_data, id, aadt, aadt_sd)
+balanced_trondheim <- balance_predictions(data = trondheim_data, model = mod_bus, 
+                                      #colname_aadt = "aadt_without_bus", 
+                                      #colname_sd = "aadt_without_bus_sd", 
+                                      constraint_matrix = constraint_matrix)
 
+print(balanced_trondheim$diagnostics)
