@@ -1,12 +1,12 @@
 balance_predictions <- function(data, model, constraint_matrix = NULL,
-                                colname_aadt = "aadt", colname_sd = "aadt_sd"){
+                                colname_aadt = "aadt", colname_sd = "aadt_sd", 
+                                lambda = 1e-10){
   # Step 0: Set up data and constraint matrices
   # Flow constraints
   if(is.null(constraint_matrix)){
     A1 <- build_flow_constraints(data)
   }else{
     A1 <- constraint_matrix
-    #A1 <- A1[-1, ]
   }
 
   n_p <- sum(!is.na(data[[colname_aadt]])) # No. of AADT values
@@ -21,8 +21,6 @@ balance_predictions <- function(data, model, constraint_matrix = NULL,
   marginal_sds <- model$summary.fitted.values[, "sd"]
   
   Sigma_v <- diag(marginal_sds^2) 
-  
-  Sigma_vb <- Sigma_v %*% t(A)
   
   b <- c(rep(0, n_n), d)
   
@@ -39,6 +37,9 @@ balance_predictions <- function(data, model, constraint_matrix = NULL,
   A1 <- as.matrix(A1)
   A2 <- as.matrix(A2)
   A <- rbind(A1, A2)
+  
+  Sigma_vb <- Sigma_v %*% t(A)
+  
   
   # Step 3: Check system properties
   rank_A1 <- qr(A1)$rank
@@ -58,7 +59,6 @@ balance_predictions <- function(data, model, constraint_matrix = NULL,
     method <- "pseudoinverse"
   } else if (kappa(Sigma_b) > 1e12) {
     # Use regularization for ill-conditioned systems
-    lambda <- 1e-10
     Sigma_b_reg <- Sigma_b + lambda * diag(nrow(Sigma_b))
     Sigma_b_inv <- solve(Sigma_b_reg)
     method <- "regularized"
