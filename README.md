@@ -9,15 +9,18 @@ xdt-modelling/
 │   └── model_config.yaml          # Model parameters, hyperparameters
 ├── R/
 │   ├── data_preprocessing.R       # Data preprocessing
+│   ├── exploratory_analysis.R     # Functions for exploring and plotting the data
+│   ├── feature_engineering.R      # Creating new variables, scaling, etc.
 │   ├── model_training.R           # Model fitting functions
 │   ├── model_validation.R         # Cross-validation, model selection, performance metrics
-|   ├── visualization.R            # Plotting functions for EDA, results
+|   ├── visualization.R            # Plotting functions
 │   └── utilities.R                # Helper functions, data type conversions
 ├── scripts/
 │   ├── 01_data_preprocessing.R    # Execute preprocessing pipeline
 │   ├── 02_exploratory_analysis.R  # EDA, data quality checks
 │   ├── 03_model_selection.R       # Execute validation/selection
-│   └── 04_run_model.R             # Train final model, save artifacts
+│   ├── 04_run_model.R             # Train final model, save artifacts
+│   └── sandbox/                   # Small scripts for exploration and testing
 ├── tests/
 │   ├── test_preprocessing.R       # Unit tests for preprocessing
 │   ├── test_models.R              # Model validation tests
