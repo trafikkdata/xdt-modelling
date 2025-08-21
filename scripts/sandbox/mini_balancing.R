@@ -1,4 +1,10 @@
-# Simulated example
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Basic simulated example ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+# Only using A1.
+
+
 mu_v <- MASS::rnegbin(6, mu = 1000, theta = 1)
 mu_v
 Sigma_v <- diag(rnorm(6)^2)
@@ -28,7 +34,7 @@ Sigma_v_given_b_1 <- Sigma_v + Sigma_v %*% t(A1) %*% Sigma_b_inv %*% t(Sigma_v %
 
 
 # 2. Remove one constraint
-A1_red <- A1[-1, ]
+A1_red <- A1[-1, ] # Remove first row
 Sigma_b_red <- A1_red %*% Sigma_v %*% t(A1_red)
 Sigma_b_inv <- solve(Sigma_b_red)
 mu_v_given_b_2 <- mu_v + Sigma_v %*% t(A1_red) %*% Sigma_b_inv %*% (0 - A1_red %*% mu_v)
@@ -43,5 +49,4 @@ Sigma_v_given_b_3 <- Sigma_v + Sigma_v %*% t(A1) %*% Sigma_b_inv %*% t(Sigma_v %
 
 # Compare the three solutions
 cbind(mu_v_given_b_1, mu_v_given_b_2, mu_v_given_b_3)
-
 
