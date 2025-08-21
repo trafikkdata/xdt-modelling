@@ -25,6 +25,11 @@ table(data$bestDataSourceAadt_sourceType, data$bestDataSourceAadt_registrationFr
 # Number of derived versus measured values
 table(data$bestDataSourceAadt_trafficVolumeType)
 
+# Distribution of heavy weight data sources
+heavy_data <- filter(data, !is.na(bestDataSourceAadt_heavyRatio))
+table(heavy_data$bestDataSourceAadt_sourceType, heavy_data$bestDataSourceAadt_registrationFrequency)
+table(heavy_data$bestDataSourceAadt_trafficVolumeType)
+
 # Markdown table of all the columns
 cat(paste0("| Column name |  | \n", "| - | - | \n", 
            paste0("| ", colnames(data), collapse = " | | \n"), " | | "))
