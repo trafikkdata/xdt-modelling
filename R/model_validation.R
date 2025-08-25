@@ -1,3 +1,7 @@
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Calculate approved ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 calculate_approved <- function(model = NULL, 
                                pred = round(model$summary.fitted.values[, "0.5quant"]), 
                                sd = round(model$summary.fitted.values[, "sd"]), 
@@ -114,6 +118,102 @@ estimate_standard_error <- function(aadt) {
     aadt < 30000  ~ 1000,
     TRUE          ~ 2000
   )
+}
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Cross validate ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+cross_validate <- function(data, n_folds, formula_list, graph){
+  # model_list might be a list of functions that all take the data as input and 
+  # return the model predictions as output, for example.
+  scores_df <- data.frame(mae_cv = numeric(),
+                          median_ae_cv = numeric(),
+                          rmse_cv = numeric(),
+                          exp_male_cv = numeric(),
+                          median_sd_cv = numeric(), 
+                          model = character(),
+                          fold = numeric())
+  data_with_response <- filter(data, !is.na(prelimAadt))
+  n_obs <- nrow(data_with_response)
+  
+  # Set seed to ensure the same folds each run
+  set.seed(1)
+  
+  # This divides the observations as evenly as possible across the folds, 
+  # with no more than 1 in difference between the folds.
+  # `assignments` is a vector of length n_obs. 
+  assignments <- sample(rep(seq_len(n_folds), length.out = n_obs))
+  table(assignments)
+  
+  # Add folds to the data
+  data_with_response$fold <- assignments
+  
+  for(i in 1:n_folds){
+    # Training data: n_folds-1 folds
+    # Testing data: 1 fold
+    
+    # We make a new response column that has NA for the testing data:
+    data_with_response$response <- ifelse(data_with_response$fold == i, 
+                                          NA,
+                                          data_with_response$prelimAadt)
+    # Remember that this column is overwritten for each fold.
+    
+    # Now fit the models using 'response' as the response.
+    model_results <- lapply(formula_list, model_template, data = data_with_response)
+    
+    # Calculate scores for this fold
+    scores_list <- lapply(model_results, calculate_scores, data_with_response)
+    scores_curr <- bind_rows(scores_list, .id = "model")
+    scores_curr$fold <- i
+    scores_df <- bind_rows(scores_df, scores_curr)
+  }
+  # Calculate the average scores for each model candidate: 
+  scores_across_folds <- scores_df %>% 
+    group_by(model) %>% 
+    summarise_all(mean)
+  
+  return(scores_across_folds)
+}
+
+
+calculate_scores <- function(model, data){
+  pred_medians <- round(model$summary.fitted.values[, "0.5quant"])
+  pred_sd <- round(model$summary.fitted.values[, "sd"])
+  
+  validation_indices <- is.na(data$response) 
+  true_values <- data$prelimAadt[validation_indices]
+  predicted_values <- pred_medians[validation_indices]
+  
+  mae_cv <- mean(abs(true_values - predicted_values))
+  median_ae_cv <- median(abs(true_values - predicted_values))
+  rmse_cv <- sqrt(mean((true_values - predicted_values)^2))
+  
+  absolute_log_errors <- abs(log1p(true_values/predicted_values))
+  exp_male_cv <- exp(mean(absolute_log_errors))
+  median_sd_cv <- median(pred_sd)
+  
+  rmsre_cv <- sqrt(mean(((true_values - predicted_values)/true_values)^2))
+  mare_cv <- mean(abs(true_values-predicted_values)/true_values)
+  mrpd_cv <- mean(abs(true_values-predicted_values)/((abs(true_values)+abs(predicted_values))/2))
+  
+  # OBS: Here we calculate the coverage probability based on the credibility interval,
+  # not the standard deviation. Might reconsider this.
+  # Should not matter much if the distributions for the fitted values are symmetric.
+  cr95_low <- model$summary.fitted.values[validation_indices, "0.025quant"]
+  cr95_high <- model$summary.fitted.values[validation_indices, "0.975quant"]
+  true_within <- sum(true_values >= cr95_low & true_values <= cr95_high)/length(true_values)
+  
+  return(data.frame(mae_cv = mae_cv,
+                    median_ae_cv = median_ae_cv,
+                    rmse_cv = rmse_cv,
+                    exp_male_cv = exp_male_cv,
+                    median_sd_cv = median_sd_cv,
+                    rmsre_cv = rmsre_cv,
+                    mare_cv = mare_cv,
+                    mrpd_cv = mrpd_cv,
+                    true_within = true_within))
 }
 
 
