@@ -1,3 +1,7 @@
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Main preprocessing function ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 #' Preprocess data
 #'
 #' @param raw_data Raw, unprocessed traffic count data
@@ -13,7 +17,6 @@
 #' @returns
 #' @export
 #'
-#' @examples
 preprocess_traffic_data <- function(raw_data, 
                                     year, 
                                     scale_cols = NULL, 
@@ -30,7 +33,6 @@ preprocess_traffic_data <- function(raw_data,
     process_traffic_volume(year = year) %>% 
     # fill_missing_entries() %>% 
     process_list_columns() %>% 
-    remove_list_columns() %>% 
     standardize_data_types() %>% 
     # engineer_features() %>% 
     # scale_numeric_features(scale_cols = scale_cols) %>% 
@@ -47,7 +49,9 @@ preprocess_traffic_data <- function(raw_data,
 }
 
 
-
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Process traffic volume ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 process_traffic_volume <- function(df, year){
   # If data is from 2024 or later, it contains the variable "bestDataSourceAadt", which is a nested data frame column.
@@ -74,6 +78,9 @@ flatten_df <- function(df){
 }
 
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Process_list_columns ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 process_list_columns <- function(df){
   # All list extraction logic
@@ -85,6 +92,9 @@ process_list_columns <- function(df){
                dplyr::across(c(municipalityIds, countyIds, 
                                roadCategory, roadSystemReferences), 
                       safely_extract_first_element))
+  
+  df <- remove_list_columns(df)
+  
   return(df)
 }
 
@@ -102,9 +112,6 @@ safely_extract_first_element <- Vectorize(function(x){
   warning("Entry was not vector, character, numeric or null.")
 })
 
-
-
-
 remove_list_columns <- function(df){
   list_cols <- sapply(df, is.list)
   df_filtered <- df[, !list_cols]
@@ -112,7 +119,9 @@ remove_list_columns <- function(df){
 }
 
 
-
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Standardize data types ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 standardize_data_types <- function(df){
   # Final type conversions
@@ -137,6 +146,9 @@ standardize_data_types <- function(df){
 }
 
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add busstop counts ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 add_busstop_counts <- function(df, 
                                stops_on_traffic_links_data, 
@@ -259,6 +271,11 @@ quality_check_bus <- function(){
   # These are both very unlikely.
 }
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Round and check AADT ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 round_and_check_aadt <- function(df){
   df$aadt <- round(df$aadt)
   df$aadt[df$aadt < 0] <- 0
@@ -268,8 +285,11 @@ round_and_check_aadt <- function(df){
 
 
 
-# Tester
+# Tests ----
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Check raw data ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 check_raw_data <- function(raw_data){
   cat("Checking column names... ")
@@ -296,17 +316,37 @@ check_raw_data <- function(raw_data){
   
 }
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Validate processed data ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 validate_processed_data <- function(){
   # Quality checks
 }
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Check required columns ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 check_required_columns <- function(){
   # Quality checks
 }
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Validate data ranges ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 validate_data_ranges <- function(){
   # AADT > 0, etc.
 }
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Check data completeness ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 check_data_completeness <- function(df){
   # Missing values?
@@ -318,6 +358,11 @@ check_data_completeness <- function(df){
   }
   # Check for missing values in relevant columns
 }
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Validate data types ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 validate_data_types <- function(){
   # Check that columns have the right type.
