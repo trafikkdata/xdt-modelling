@@ -58,7 +58,7 @@ balanced_trondheim <- balance_predictions(data = trondheim_data, model = mod_bus
 print(balanced_trondheim$diagnostics)
 
 inla_res <- calculate_approved(
-  model = model, #mod_bus, 
+  model = mod_bus, 
   data = trondheim_data, 
   data_manual = aadt2024,
   model_name = "inla")
