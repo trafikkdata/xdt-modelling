@@ -6,7 +6,7 @@ make_crosstab_heatmap <- function(data, var1, var2, log_scale = FALSE) {
   fill_var <- if(log_scale) quo(log10(n + 1)) else quo(n)
   
   ggplot(crosstab, aes_string(x = var1, y = var2, fill = fill_var)) +
-    geom_tile(color = "white", size = 0.5) +
+    geom_tile(color = "white", linewidth = 0.5) +
     scale_fill_gradient(low = "lightblue", high = "darkblue") +
     geom_text(aes(label = n), color = "white", size = 3) +
     theme_minimal() +
@@ -47,7 +47,7 @@ make_aadt_heatmap <- function(data, var1, var2,
   
   # Create the plot
   p <- ggplot(summary_data, aes_string(x = var1, y = var2, fill = quo_name(fill_var))) +
-    geom_tile(color = "white", size = 0.5) +
+    geom_tile(color = "white", linewidth = 0.5) +
     scale_fill_gradient(low = "lightblue", high = "darkred", name = stat_label) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
@@ -70,7 +70,8 @@ make_aadt_heatmap <- function(data, var1, var2,
   return(p)
 }
 
-
+# Function for iterating through all variable pairs.
+# Used for plotting heatmaps.
 plot_all_pairs <- function(data, pairwise_combinations, plot_type, ...){
   plot_list <- list()
   for(pair in 1:ncol(pairwise_combinations)){
