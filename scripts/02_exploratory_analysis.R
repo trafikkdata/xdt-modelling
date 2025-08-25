@@ -1,15 +1,14 @@
-#library(sf)
-library(dplyr)
-#library(INLA)
-library(ggplot2)
-library(purrr)
-library(gridExtra)
-library(fitdistrplus)
 
 #config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
 
 source("R/utilities.R")
 source("R/exploratory_analysis.R")
+
+library(dplyr)
+library(ggplot2)
+library(purrr)
+library(gridExtra)
+library(fitdistrplus)
 
 theme_set(theme_bw())
 
@@ -40,9 +39,9 @@ potential_covariates <- c(
   "lowestSpeedLimit", "isNorwegianScenicRoute", "isFerryRoute", "isRamp", 
   "isBlocked", "isInvalid", "yearAppliesTo", "municipalityIds", "countyIds", 
   "roadCategory", "length", "maxLanes", "minLanes", 
-  "hasOnlyPublicTransportLanes", "lastYearAadt", "county", "roadSystem")
+  "hasOnlyPublicTransportLanes", "lastYearAadt", "countyIds")
 
-cov_data <- select(data, all_of(c(potential_covariates, "aadt")))
+cov_data <- dplyr::select(data, all_of(c(potential_covariates, "aadt")))
 
 # Percentage of missing values in each column
 colMeans(is.na(cov_data)) * 100
@@ -71,21 +70,6 @@ cat("Mean:", mean(aadt_clean), "\n",
     "Variance-to-Mean Ratio:", var(aadt_clean)/mean(aadt_clean), "\n",
     "Standard Deviation:", sd(aadt_clean), "\n")
 
-# Q-Q plot against theoretical Poisson
-# Note: For large lambda, Poisson approximates normal
-theoretical_poisson <- rpois(length(aadt_clean), lambda = mean(aadt_clean))
-
-ggplot(data.frame(sample = sort(aadt_clean), 
-                  theoretical = sort(theoretical_poisson)), 
-       aes(x = theoretical, y = sample)) +
-  geom_point(alpha = 0.5) +
-  geom_abline(slope = 1, intercept = 0, color = "red") +
-  labs(title = "Q-Q Plot: Sample vs Theoretical Poisson") +
-  theme_minimal()
-
-# Due to extreme overdispersion we should probably use negative binomial rather 
-# than Poisson.
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Covariate analysis ----
@@ -102,7 +86,7 @@ factor_vars <- data %>%
 
 factor_vars_to_use <- c("functionalRoadClass", "functionClass", 
                         "highestSpeedLimit", "lowestSpeedLimit", 
-                        "roadCategory", "maxLanes", "minLanes", "county")
+                        "roadCategory", "maxLanes", "minLanes", "countyIds")
 
 # Create bar charts for each factor variable
 factor_plots <- map(factor_vars_to_use, ~ {
@@ -116,7 +100,7 @@ factor_plots <- map(factor_vars_to_use, ~ {
 })
 
 # Name the plots
-names(factor_plots) <- factor_vars
+names(factor_plots) <- factor_vars_to_use
 
 # Display all plots
 patchwork::wrap_plots(factor_plots)
