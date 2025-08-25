@@ -1,4 +1,4 @@
-# Testing model on ??lesund
+# Testing model on Ålesund
 
 library(sf)
 library(dplyr)
@@ -60,8 +60,8 @@ retta <- inla_res$retta %>%
          balansert_sd = balanced_res$retta$balansert_sd) %>% 
   mutate(text = paste0("INLA: ", inla_pred, 
                        "<br>Balanced: ", balansert_pred,
-                       #"<br>??DT 2023: ", ??DT.fjor??rets,
-                       "<br>M??lt eller utleda ??DT: ", aadt,
+                       #"<br>ÅDT 2023: ", ÅDT.fjorårets,
+                       "<br>Målt eller utleda ÅDT: ", aadt,
                        "<br>ID: ", id))
 
 leaflet::leaflet(retta, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
