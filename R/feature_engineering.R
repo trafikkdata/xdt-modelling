@@ -1,3 +1,23 @@
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Main feature engineering function ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+engineer_features <- function(df, columns_to_fill = NULL, scale_cols){
+  df <- df %>% 
+    fill_missing_entries(columns_to_fill = columns_to_fill) %>% 
+    merge_sparse_categories() %>% 
+    add_county() %>% 
+    add_roadSystem() %>% 
+    add_logLength() %>% 
+    scale_numeric_features(scale_cols = scale_cols)
+  
+  return(df)
+    
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Fill missing values ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 fill_missing_entries <- function(df, columns_to_fill = NULL){
   if(is.null(columns_to_fill)){
@@ -19,6 +39,9 @@ Mode <- function(x) {
   ux[which.max(tabulate(match(x, ux)))]
 }
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Merge sparse categories ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 merge_sparse_categories <- function(df){
   df <- df |>
@@ -47,6 +70,10 @@ merge_sparse_categories <- function(df){
   return(df)
 }
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add county variable ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 add_county <- function(df){
   # County names from codes
   county_mapping <- c(
@@ -71,16 +98,27 @@ add_county <- function(df){
     dplyr::mutate(county = as.factor(county_mapping[as.character(countyIds)]))
 }
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add roadSystem variable ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 add_roadSystem <- function(df){
   df |>
     dplyr::mutate(roadSystem = as.factor(gsub(" .*$", "", roadSystemReferences)))
 }
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add logLength variable ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 add_logLength <- function(df){
   df |>
     dplyr::mutate(logLength = log(length))
 }
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Scale numeric features ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 scale_numeric_features <- function(df, scale_cols){
   df[scale_cols] <- scale(df[scale_cols])
