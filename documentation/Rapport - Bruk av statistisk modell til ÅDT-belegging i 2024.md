@@ -46,12 +46,14 @@ Trafikklenkegrafen viser hvordan alle europa-, riks- og fylkesveier i Norge heng
 ## ÅDT-modellen
 #### **Den statistiske modellen**
 Modellen er en såkalt GLMM (generalised linear mixed model) med ei Poisson-fordeling som rimelighetsfunksjon. Modellen som kobler de $n_e$ trafikkmengde-observasjonene $y_i$, $i = 1, \dots, n_e$, sammen med de $p$ forklaringsvariablene $x_j$, $j = 1, \dots, p$, og de andre modellkomponentene ser da slik ut:
+
 $$
 \begin{aligned}
 y_i &~ \sim \text{Poisson}(\mu_i) \ , \\
 \log(\mu_i) &= \beta_0 + \beta_1x_1 + \beta_2x_2 + \dots + \beta_px_p + u_i + r_i \ .
 \end{aligned}
 $$
+
 I uttrykket over ser vi beskrevet hvordan en observert trafikkmengde $y_i$ er knyttet til ei Poisson-fordeling med intensitet $\mu_i$. Intensiteten er videre beskrevet som en funksjon av en rekke forklaringsvariabler, samt to komponenter $u_i$ og $r_i$. I dette tilfellet angir $u_i$ den romlige komponenten som tar inn trafikklenkegrafen, mens $r_i$ angir et ustrukturert variasjonsledd som sier at hvert vegsystem tillates å variere litt uavhengig av naboene. Dette siste leddet er nyttig som et ledd i en Poisson-modell når man antar at man kan ha over-spredning, altså at variansen og forventningsverdien ikke nødvendigvis er lik. 
 
 Den endelige modellen brukte følgende formel: 
@@ -73,9 +75,11 @@ Den endelige modellen brukte følgende formel:
 ```
 
 `f(link, model = "besag",...)` er den romlige komponenten, omtalt som $u_i$ i formelen. En Besag modell for en stokastisk vektor $\boldsymbol{u} = (u_1, \dots, u_{n_e})$ er definert som 
+
 $$
 u_i \mid u_j \sim \mathcal{N}(\frac{1}{n_i}\sum_{i\sim j} u_j, \frac{1}{n_i\tau}) \ ,
 $$
+
 for alle $i \neq j$. Her er $n_i$ antall naboer for node $i$, og notasjonen $i\sim j$ betyr at node $i$ og $j$ er naboer. Altså sier vi at verdien $u_i$ til node $i$ er normalfordelt rundt snittet til verdien hos nabo-nodene, med varians $1/n_i\tau$, hvor $\tau$ er en hyperparameter. Denne typen modell omtales også ofte som en conditional autoregressive modell (CAR)
 
 `f(roadSystemReference, model = "iid")` er random effect leddet som tillater et ekstra variasjonsledd for hvert vegsystem, omtalt som $r_i$ i formelen. 
@@ -101,31 +105,36 @@ Etter denne modellen blir tilpasset i INLA på alle trafikklenkene, hentes media
 For å sikre at trafikkmenden forblir balansert mellom inngående og utgående trafikk fra et kryss, introduseres et tilleggsteg etter manglende ÅDT har blitt estimert i INLA. Denne balanseringen ble først beskrevet av [Haug et al. (2021)](https://nr.no/publikasjon/1962532/), og tilleggskriterier ble introdusert i [Haug og Aldrin (2022)](https://nr.no/publikasjon/2070401/). To av kravene presentert i [Haug og Aldrin (2022)](https://nr.no/publikasjon/2070401/) ble ikke brukt, med deres notasjon ble kravene i matrise $A_4$ (total predikert ÅDT summert over alle trafikklenker er lik summen av balansert ÅDT) og $A_5$ (balansering av motgående trafikk) utelatt. Det står da igjen fire ulike typer krav: 1) balansering av trafikken i kryss, 2) målefeil på preliminær ÅDT fra trafikkregistreringspunkter, 3) total målt ÅDT summert over lenker med trafikkregistreringspunkter, og 4) svingebevegelser i kryss.
 
 ***Notasjon for balanseringa***
-$n_n$ - antall trafikknoder.
-$n_e$ - antall trafikklenker (retta).
-$n_p$ - antall trafikklenker med trafikkregistrering.
-$n_s^I$ - samlet antall inngående trafikklenker til alle kryss i vegnettsgrafen ($n_s^I \leq n_e$).
-$\boldsymbol{v} = (v_{ij})$ for $i,j = 1,\dots, n_n$ - vektor med de sanne ÅDT-verdiene for alle trafikklenker. Subscriptene indikerer henholdsvis start- og sluttnode for den gitte lenka.
-$\boldsymbol{\mu}_v$, $\boldsymbol{\Sigma}_v$ - predikert ÅDT og tilhørende usikkerhet fra modell-steget.
-$\boldsymbol{d}$, $\boldsymbol{\Sigma}_\varepsilon'$ - målt ÅDT og tilhørende usikkerhet. 
+
+- $n_n$ - antall trafikknoder.
+- $n_e$ - antall trafikklenker (retta).
+- $n_p$ - antall trafikklenker med trafikkregistrering.
+- $n_s^I$ - samlet antall inngående trafikklenker til alle kryss i vegnettsgrafen ($n_s^I \leq n_e$).
+- $\boldsymbol{v} = (v_{ij})$ for $i,j = 1,\dots, n_n$ - vektor med de sanne ÅDT-verdiene for alle trafikklenker. Subscriptene indikerer henholdsvis start- og sluttnode for den gitte lenka.
+- $\boldsymbol{\mu}_v$, $\boldsymbol{\Sigma}_v$ - predikert ÅDT og tilhørende usikkerhet fra modell-steget.
+- $\boldsymbol{d}$, $\boldsymbol{\Sigma}_\varepsilon'$ - målt ÅDT og tilhørende usikkerhet. 
 
 **1. Balansering av trafikken i kryss**
 Trafikken inn og ut av et kryss skal være lik. Dette kravet gjaldt også i [Haug et al. (2021)](https://nr.no/publikasjon/1962532/). Vi definerer ei retta insidensmatrise $\boldsymbol{A}_1$ som angir hvilke trafikklenker er knyttet til de ulike kryssene. $\boldsymbol{A}_1$ har dimensjon $n_n\times n_e$. For rad $i$ i matrisa er alle verdiene 0 bortsett fra de kolonnene som tilsvarer trafikklenker som går ut fra (verdi = 1) eller inn mot (verdi = -1) trafikknode $i$. Hver trafikklenke (representert av ei kolonne) vil kun ha to verdier som ikke er null, nemlig noden (representert av en rad) hvor lenka starter (verdi = 1) og noden hvor den slutter (verdi = -1). Når matrisa $\boldsymbol{A}_1$ er konstruert slik, kan dette kravet skrives som
+
 $$
 \boldsymbol{A}_1\boldsymbol{v} = \boldsymbol{0} \ .
 $$
 
 **2. Målefeil på preliminær ÅDT fra trafikkregistreringspunkter**
-Alle trafikkmengdene fra trafikkregistreringspunkt er målt med varierende grad av målefeil. Vi definerer ei matrise $\boldsymbol{A}_2$ som har dimensjon $n_p\times n_e$, og som skal indikere om ei gitt trafikklenke har trafikkregistrering. Vi ender opp med ei matrise hvor hver rad har bare 0 bortsett fra ett elemnet som er 1 i den kolonna som korresponderer til den trafikklenka som er i tilsvarende rad. Det betyr at hver rad har bare ett element som har verdi 1. Noen kolonner har kun nuller. Målefeilsmodellen blir da
+Alle trafikkmengdene fra trafikkregistreringspunkt er målt med varierende grad av målefeil. Vi definerer ei matrise $\boldsymbol{A}\_2$ som har dimensjon $n_p\times n_e$, og som skal indikere om ei gitt trafikklenke har trafikkregistrering. Vi ender opp med ei matrise hvor hver rad har bare 0 bortsett fra ett elemnet som er 1 i den kolonna som korresponderer til den trafikklenka som er i tilsvarende rad. Det betyr at hver rad har bare ett element som har verdi 1. Noen kolonner har kun nuller. Målefeilsmodellen blir da
+
 $$
 \boldsymbol{A}_2\boldsymbol{v} + \boldsymbol{\varepsilon'} = \boldsymbol{d} \ ,
 $$
-hvor $\boldsymbol{d}$ er en $n_p\times 1$-vektor med de registrerte tallene, og $\boldsymbol{\varepsilon}' \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}_\varepsilon')$, hvor $\boldsymbol{\Sigma}_\varepsilon'$ er ei diagonal matrise med elementer svarende til variansen til de preliminære ÅDT-estimatene. (til de registrerte verdiene? Kanskje omformuler her. Preliminære estimat er forvirrende.)
+
+hvor $\boldsymbol{d}$ er en $n_p\times 1$-vektor med de registrerte tallene, og $\boldsymbol{\varepsilon}' \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}\_\varepsilon')$, hvor $\boldsymbol{\Sigma}_\varepsilon'$ er ei diagonal matrise med elementer svarende til variansen til de preliminære ÅDT-tallene. 
 
 **3. Total målt ÅDT summert over lenker med trafikkregistreringspunkter**
-Dette kriteriet sier at summen av alle de balanserte ÅDT-estimatene på steder hvor vi har registreringapunkter er lik summen av de målte verdiene på disse punktene. Vi innfører radmatrisa $\boldsymbol{A}_3$, som har dimensjon $1\times n_e$, hvor raden i $\boldsymbol{A}_3$ har verdi $1$ i kolonnene som svarer til lenker med trafikkregistreringspunkter og $0$ ellers. Vi får
+Dette kriteriet sier at summen av alle de balanserte ÅDT-estimatene på steder hvor vi har registreringapunkter er lik summen av de målte verdiene på disse punktene. Vi innfører radmatrisa $\boldsymbol{A}\_3$, som har dimensjon $1\times n_e$, hvor raden i $\boldsymbol{A}\_3$ har verdi $1$ i kolonnene som svarer til lenker med trafikkregistreringspunkter og $0$ ellers. Vi får
+
 $$
-\boldsymbol{A}_3\boldsymbol{v} + \Sigma_{k = 1}^{n_p}\varepsilon_k' = \Sigma_{k = 1}^{n_p}d_k \ .
+\boldsymbol{A}\_3\boldsymbol{v} + \Sigma_{k = 1}^{n_p}\varepsilon_k' = \Sigma_{k = 1}^{n_p}d_k \ .
 $$
 
 
@@ -138,58 +147,70 @@ I dette steget legger man flere betingelser på trafikkflyten gjennom kryss, sli
 > "Koeffisientene $\omega_{li}^{(jl)}$ fordeler $v_{jl}$ proporsjonalt på de ulike lenkene ut fra kryss $l$ ved for hver lenke $li$ å skalere $v_{jl}$ mot den samlede trafikken langs alle lenkene inn mot kryss $l$ som potensielt kan gi bidrag til $v_{li}$. I tillegg normaliseres koeffisientene med totaltrafikken ($\Sigma_i v_{il}$) inn mot krysset."
 
 Koeffisientene for trafikken som kommer inn på lenke $jl$ uttrykkes da ved 
+
 $$
 \omega_{li}^{(jl)} = \frac{v_{jl}}{\Sigma_{k\neq i}v_{kl} \cdot \Sigma_i v_{il}} \ ,
 $$
+
 og det vil være en slik koeffisient for hver utgående trafikklenke fra kryss $l$.
 
 På matriseform kan vi skrive 
+
 $$
 \boldsymbol{A}_\omega\boldsymbol{v} = \boldsymbol{0} \ ,
 $$
-hvor $\boldsymbol{A}_\omega$ har dimensjon $n_s^I\times n_e$. Det betyr at for hvert kryss så er det så mange rader som krysset har inngående trafikklenker, og hver kolonne tilsvarer trafikklenkene. En gitt rad i $\boldsymbol{A}_\omega$ har verdi $-1$ i elementet som tilsvarer den aktuelle inngående trafikklenka $jl$, og koeffisientene $\omega_{li}^{(jl)}$ for de respektive utgående lenkene $li$ som leder trafikken $v_{jl}$ ut fra kryss $l$. Alle andre elementer i raden har verdi 0.
 
-[Haug og Aldrin (2022)](https://nr.no/publikasjon/2070401/) beskriver hvordan betingelsen over er mer streng enn vi ønsker. Dette er knyttet et par ulike momenter. For det første forhindrer betingelsen trafikken fra å returnere samme vei som den kom fra, noe som ikke alltid er rimelig, særlig i rundkjøringer (og I-kryss?). I tillegg er det en veldig streng betingelse. Til slutt uttrykkes koeffisientene i matrisa $\boldsymbol{A}_\omega$ ved den sanne trafikken $\boldsymbol{v}$, som vi ikke har tilgang til i praksis. I stedet må vi erstatte $\boldsymbol{v}$ med kjente estimater $\hat{\boldsymbol{v}}$, slik at vi får $\widehat{\boldsymbol{A}}_\omega = \boldsymbol{A}_\omega(\hat{\boldsymbol{v}})$ . Vi innfører også feilleddene $\boldsymbol{\varepsilon}_s^I = (\varepsilon_s^{(jl),I})$, slik at vi får
+hvor $\boldsymbol{A}\_\omega$ har dimensjon $n_s^I\times n_e$. Det betyr at for hvert kryss så er det så mange rader som krysset har inngående trafikklenker, og hver kolonne tilsvarer trafikklenkene. En gitt rad i $\boldsymbol{A}\_\omega$ har verdi $-1$ i elementet som tilsvarer den aktuelle inngående trafikklenka $jl$, og koeffisientene $\omega_{li}^{(jl)}$ for de respektive utgående lenkene $li$ som leder trafikken $v_{jl}$ ut fra kryss $l$. Alle andre elementer i raden har verdi 0.
+
+[Haug og Aldrin (2022)](https://nr.no/publikasjon/2070401/) beskriver hvordan betingelsen over er mer streng enn vi ønsker. Dette er knyttet et par ulike momenter. For det første forhindrer betingelsen trafikken fra å returnere samme vei som den kom fra, noe som ikke alltid er rimelig, særlig i rundkjøringer. I tillegg er det en veldig streng betingelse. Til slutt uttrykkes koeffisientene i matrisa $\boldsymbol{A}\_\omega$ ved den sanne trafikken $\boldsymbol{v}$, som vi ikke har tilgang til i praksis. I stedet må vi erstatte $\boldsymbol{v}$ med kjente estimater $\hat{\boldsymbol{v}}$, slik at vi får $\widehat{\boldsymbol{A}}\_\omega = \boldsymbol{A}\_\omega(\hat{\boldsymbol{v}})$ . Vi innfører også feilleddene $\boldsymbol{\varepsilon}_s^I = (\varepsilon_s^{(jl),I})$, slik at vi får
+
 $$
 \widehat{\boldsymbol{A}}_\omega \boldsymbol{v} + \boldsymbol{\varepsilon}_s^I = \boldsymbol{0} \ ,
 $$
-hvor $\boldsymbol{\varepsilon}_s^I \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}_\varepsilon^{s,I})$, med $\boldsymbol{\Sigma}_\varepsilon^{s,I} = \text{diag}((\sigma_\varepsilon^{s,I})^2)$, der $\sigma_\varepsilon^{s,I}$ beskriver usikkerheten i de inngående svingelikningene. Vi beskriver hvilke verdier denne usikkerheten settes til etter vi har beskrevet koeffisientene for den utgående trafikken. 
+
+hvor $\boldsymbol{\varepsilon}\_s^I \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}\_\varepsilon^{s,I})$, med $\boldsymbol{\Sigma}\_\varepsilon^{s,I} = \text{diag}((\sigma_\varepsilon^{s,I})^2)$, der $\sigma_\varepsilon^{s,I}$ beskriver usikkerheten i de inngående svingelikningene. Vi beskriver hvilke verdier denne usikkerheten settes til etter vi har beskrevet koeffisientene for den utgående trafikken. 
 
 *4.2 Kilder til utgående trafikk*
 Helt tilsvarende har vi for en utgående trafikklenke $lj$ koeffisientene 
+
 $$
 \tau_{il}^{(lj)} = \frac{v_{lj}}{\Sigma_{k\neq i}v_{lk}\cdot \Sigma_iv_{li}} \ ,
 $$
+
 og vi får en slik koeffisient for hver inngående trafikklenke til kryss $l$. Vi strukturerer koeffisientene i matrisa $\boldsymbol{A}_\tau$, slik at vi får 
+
 $$
 \boldsymbol{A}_\tau\boldsymbol{v} = \boldsymbol{0} \ ,
 $$
-hvor $\boldsymbol{A}_\tau$ har dimensjon $n_s^U\times n_e$, altså det vil for hvert kryss være så mange rader som det krysset har utgående lenker. For en gitt rad i matrisa vil den ha verdi $-1$ i elementet som tilsvarer den aktuelle utgående trafikklenka $lj$, og koeffisientverdiene $\tau_{il}^{(lj)}$ for de respektive inngående lenkene $il$ som bidrar til trafikken $v_{lj}$. De andre elementene er lik null. Vi innfører som over feilleddene $\boldsymbol{\varepsilon}_s^U = (\varepsilon_s^{(jl),U})$ og bruker ei estimert matrise $\widehat{\boldsymbol{A}}_\tau = \boldsymbol{A}_\tau(\hat{\boldsymbol{v}})$. Vi har da
+
+hvor $\boldsymbol{A}\_\tau$ har dimensjon $n_s^U\times n_e$, altså det vil for hvert kryss være så mange rader som det krysset har utgående lenker. For en gitt rad i matrisa vil den ha verdi $-1$ i elementet som tilsvarer den aktuelle utgående trafikklenka $lj$, og koeffisientverdiene $\tau_{il}^{(lj)}$ for de respektive inngående lenkene $il$ som bidrar til trafikken $v_{lj}$. De andre elementene er lik null. Vi innfører som over feilleddene $\boldsymbol{\varepsilon}\_s^U = (\varepsilon_s^{(jl),U})$ og bruker ei estimert matrise $\widehat{\boldsymbol{A}}\_\tau = \boldsymbol{A}_\tau(\hat{\boldsymbol{v}})$. Vi har da
+
 $$
 \widehat{\boldsymbol{A}}_\tau \boldsymbol{v} + \boldsymbol{\varepsilon}_s^U = \boldsymbol{0} \ ,
 $$
-hvor $\boldsymbol{\varepsilon}_s^U \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}_\varepsilon^{s,U})$, med $\boldsymbol{\Sigma}_\varepsilon^{s,U} = \text{diag}((\sigma_\varepsilon^{s,U})^2)$, der $\sigma_\varepsilon^{s,U}$ beskriver usikkerheten i de utgående svingelikningene.
+
+hvor $\boldsymbol{\varepsilon}\_s^U \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}\_\varepsilon^{s,U})$, med $\boldsymbol{\Sigma}\_\varepsilon^{s,U} = \text{diag}((\sigma_\varepsilon^{s,U})^2)$, der $\sigma_\varepsilon^{s,U}$ beskriver usikkerheten i de utgående svingelikningene.
 
 *4.3 Proposjonalitetskonstanter*
-Denne usikkerheten setter vi til ulike verdier avhengig av hvilket kryss vi befinner oss i. For I-kryssene har vi en fast verdi $\sigma_\varepsilon^{s,I} = \sigma_\varepsilon^{s,U} = 0.01$, mens vi for andre kryss uttrykker usikkerheten ved hjelp av residualene til de inngående og utgående svingeligningene beregnet over alle kryss som ikke er I-kryss, henholdsvis $\boldsymbol{r}_\varepsilon^I$ og $\boldsymbol{r}_\varepsilon^U$, slik at $\sigma_\varepsilon^{s,\cdot} = c_\varepsilon^s = (\overline{(\boldsymbol{r}_\varepsilon^I)^2 + (\boldsymbol{r}_\varepsilon^U)^2})^{1/2}$.
+Denne usikkerheten setter vi til ulike verdier avhengig av hvilket kryss vi befinner oss i. For I-kryssene har vi en fast verdi $\sigma_\varepsilon^{s,I} = \sigma_\varepsilon^{s,U} = 0.01$, mens vi for andre kryss uttrykker usikkerheten ved hjelp av residualene til de inngående og utgående svingeligningene beregnet over alle kryss som ikke er I-kryss, henholdsvis $\boldsymbol{r}\_\varepsilon^I$ og $\boldsymbol{r}\_\varepsilon^U$, slik at $\sigma_\varepsilon^{s,\cdot} = c_\varepsilon^s = (\overline{(\boldsymbol{r}\_\varepsilon^I)^2 + (\boldsymbol{r}_\varepsilon^U)^2})^{1/2}$.
 
 **Setter det sammen**
 Vi definerer nå 
 
 $$
 \boldsymbol{A} = \begin{bmatrix}
-\boldsymbol{A}_1\\
-\boldsymbol{A}_2\\
-\boldsymbol{A}_3\\
-\boldsymbol{A}_\omega\\
-\boldsymbol{A}_\tau\\
+\boldsymbol{A}\_1\\
+\boldsymbol{A}\_2\\
+\boldsymbol{A}\_3\\
+\boldsymbol{A}\_\omega\\
+\boldsymbol{A}\_\tau\\
 \end{bmatrix} \ , \quad
 \boldsymbol{\varepsilon} = \begin{bmatrix}
 \boldsymbol{0}\\
 \boldsymbol{\varepsilon}'\\
 \Sigma_{k = 1}^{n_p}\varepsilon_k'\\
-\boldsymbol{\varepsilon}_s^I\\
-\boldsymbol{\varepsilon}_s^U\\
+\boldsymbol{\varepsilon}\_s^I\\
+\boldsymbol{\varepsilon}\_s^U\\
 \end{bmatrix} \quad \text{og} \quad
 \boldsymbol{b} = \begin{bmatrix}
 \boldsymbol{0}\\
@@ -201,35 +222,46 @@ $$
 $$
 
 Dette gir oss uttrykket 
+
 $$
-\boldsymbol{A}\boldsymbol{v} + \boldsymbol{\varepsilon} = \boldsymbol{b} \ . \tag{1}
+\boldsymbol{A}\boldsymbol{v} + \boldsymbol{\varepsilon} = \boldsymbol{b} \ . \qquad \text{(1)}
 $$
+
 Her antar vi en à priori-fordeling for $\boldsymbol{v}$ som
+
 $$
-\boldsymbol{v} \sim \mathcal{N}(\boldsymbol{\mu}_v, \boldsymbol{\Sigma}_v) \ , \tag{2}
+\boldsymbol{v} \sim \mathcal{N}(\boldsymbol{\mu}_v, \boldsymbol{\Sigma}_v) \ , \qquad \text{(2)}
 $$
+
 hvor $\boldsymbol{\mu}_v$ er de predikerte ÅDT-estimatene (fra modellen), og $\boldsymbol{\Sigma}_v$ er usikkerheten i prediksjonene, begge disse kommer fra modellen.
 
 For feilleddet $\boldsymbol{\varepsilon}$ i $(1)$ bruker vi
+
 $$
-\boldsymbol{\varepsilon} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}_\varepsilon) \ , \tag{3}
+\boldsymbol{\varepsilon} \sim \mathcal{N}(\boldsymbol{0}, \boldsymbol{\Sigma}_\varepsilon) \ , \qquad \text{(3)}
 $$
+
 hvor
+
 $$
-\qquad \boldsymbol{\Sigma}_\varepsilon = 
+\qquad \boldsymbol{\Sigma}\_\varepsilon = 
 \begin{bmatrix}
 0 & 0 & 0 & 0 & 0 \\
-0 & \boldsymbol{\Sigma}_\varepsilon' & 0 & 0 & 0 \\
-0 & 0 & \Sigma_{k = 1}^{n_p}\text{diag}(\boldsymbol{\Sigma}_\varepsilon')_k & 0 & 0 \\
-0 & 0 & 0 & \boldsymbol{\Sigma}_\varepsilon^{s,I} & 0 \\
-0 & 0 & 0 & 0 & \boldsymbol{\Sigma}_\varepsilon^{s,U} \\
+0 & \boldsymbol{\Sigma}\_\varepsilon' & 0 & 0 & 0 \\
+0 & 0 & \Sigma_{k = 1}^{n_p}\text{diag}(\boldsymbol{\Sigma}\_\varepsilon')_k & 0 & 0 \\
+0 & 0 & 0 & \boldsymbol{\Sigma}\_\varepsilon^{s,I} & 0 \\
+0 & 0 & 0 & 0 & \boldsymbol{\Sigma}\_\varepsilon^{s,U} \\
 \end{bmatrix}
 $$
+
 Fra à priori-fordelingen $(2)$ og ligningssystemet $(1)$ følger det at 
+
 $$
 \boldsymbol{b} \sim \mathcal{N}(\boldsymbol{A}\boldsymbol{\mu}_v, \boldsymbol{\Sigma}_b) \ ,
 $$
-hvor $\boldsymbol{\Sigma}_b = \boldsymbol{A} \boldsymbol{\Sigma}_v\boldsymbol{A}^\top + \boldsymbol{\Sigma}_\varepsilon$. Videre følger det da at simultanfordelingen til to normalfordelte stokastiske variabler er
+
+hvor $\boldsymbol{\Sigma}\_b = \boldsymbol{A} \boldsymbol{\Sigma}\_v\boldsymbol{A}^\top + \boldsymbol{\Sigma}_\varepsilon$. Videre følger det da at simultanfordelingen til to normalfordelte stokastiske variabler er
+
 $$
 \begin{bmatrix}
 \boldsymbol{v} \\
@@ -237,31 +269,38 @@ $$
 \end{bmatrix}
 \sim \mathcal{N}\Biggl(
 \begin{bmatrix}
-\boldsymbol{\mu}_v \\
-\boldsymbol{A}\boldsymbol{\mu}_v
+\boldsymbol{\mu}\_v \\
+\boldsymbol{A}\boldsymbol{\mu}\_v
 \end{bmatrix} ,
 \begin{bmatrix}
-\boldsymbol{\Sigma}_v & \boldsymbol{\Sigma}_{vb} \\
-\boldsymbol{\Sigma}_{bv} & \boldsymbol{\Sigma}_b
+\boldsymbol{\Sigma}\_v & \boldsymbol{\Sigma}\_{vb} \\
+\boldsymbol{\Sigma}\_{bv} & \boldsymbol{\Sigma}\_b
 \end{bmatrix}
 \Biggr) \ ,
 $$
-hvor $\boldsymbol{\Sigma}_{vb} = \boldsymbol{\Sigma}_{bv}^\top$ er kovariansmatrisa mellom $\boldsymbol{v}$ og $\boldsymbol{b}$. Fra $(1)$ følger det at
+
+hvor $\boldsymbol{\Sigma}_{vb} = \boldsymbol{\Sigma}\_{bv}^\top$ er kovariansmatrisa mellom $\boldsymbol{v}$ og $\boldsymbol{b}$. Fra $(1)$ følger det at
+
 $$
 \boldsymbol{\Sigma}_{vb} = \boldsymbol{\Sigma}_v\boldsymbol{A}^\top \ ,
 $$
+
 siden vi antar at den sanne ÅDT-verdien $\boldsymbol{v}$ er uavhengig av målefeilen $\boldsymbol{\varepsilon}$. Fra dette kan vi finne à posteriori-fordelingen til $\boldsymbol{v}$, som er den betingede fordelingen for $\boldsymbol{v}$ gitt dataene $\boldsymbol{b}$,
+
 $$
-\boldsymbol{v}\mid\boldsymbol{b} \sim \mathcal{N}(\boldsymbol{\mu}_{v\mid b}, \boldsymbol{\Sigma}_{v\mid b}) \ ,
+\boldsymbol{v}\mid\boldsymbol{b} \sim \mathcal{N}(\boldsymbol{\mu}\_{v\mid b}, \boldsymbol{\Sigma}_{v\mid b}) \ ,
 $$
+
 hvor
+
 $$
 \begin{aligned}
-\boldsymbol{\mu}_{v\mid b} & = \boldsymbol{\mu}_v + \boldsymbol{\Sigma}_{vb}\boldsymbol{\Sigma}_{b}^{-1}(\boldsymbol{b} - \boldsymbol{A\mu}_v) \\
-\boldsymbol{\Sigma}_{v\mid b} & = \boldsymbol{\Sigma}_{v} - \boldsymbol{\Sigma}_{vb}\boldsymbol{\Sigma}_{b}^{-1}\boldsymbol{\Sigma}_{vb}^\top
+\boldsymbol{\mu}\_{v\mid b} & = \boldsymbol{\mu}\_v + \boldsymbol{\Sigma}\_{vb}\boldsymbol{\Sigma}\_{b}^{-1}(\boldsymbol{b} - \boldsymbol{A\mu}\_v) \\
+\boldsymbol{\Sigma}\_{v\mid b} & = \boldsymbol{\Sigma}\_{v} - \boldsymbol{\Sigma}\_{vb}\boldsymbol{\Sigma}_{b}^{-1}\boldsymbol{\Sigma}\_{vb}^\top
 \end{aligned} \ . \tag{4}
 $$
-Ligningssystemet i $(1)$ kan løses iterativt, ved å for hver iterasjon estimere $\widehat{\boldsymbol{A}}_{\omega}$ og $\widehat{\boldsymbol{A}}_{\tau}$ på nytt, og så ved hjelp av det lage nye estimater $\hat{\boldsymbol{v}}$. Deretter oppdateres $\widehat{\boldsymbol{A}}_{\omega}$ og $\widehat{\boldsymbol{A}}_{\tau}$ på nytt utifra det siste estimatet for $\hat{\boldsymbol{v}}$, og slik fortsetter man i et angitt antall iterasjoner. Om algoritmen konvergerer, så vil $\boldsymbol{\mu}_{v\mid b}$ og $\boldsymbol{\Sigma}_{v\mid b}$ stabilisere seg på det som vi da kaller de balanserte ÅDT-verdiene, og tilhørende usikkerhet, for alle trafikklenkene. Algoritmen er spesifisert med pseudokode under (fra [Haug og Aldrin, 2022](https://nr.no/publikasjon/2070401/) )
+
+Ligningssystemet i $(1)$ kan løses iterativt, ved å for hver iterasjon estimere $\widehat{\boldsymbol{A}}\_{\omega}$ og $\widehat{\boldsymbol{A}}\_{\tau}$ på nytt, og så ved hjelp av det lage nye estimater $\hat{\boldsymbol{v}}$. Deretter oppdateres $\widehat{\boldsymbol{A}}\_{\omega}$ og $\widehat{\boldsymbol{A}}\_{\tau}$ på nytt utifra det siste estimatet for $\hat{\boldsymbol{v}}$, og slik fortsetter man i et angitt antall iterasjoner. Om algoritmen konvergerer, så vil $\boldsymbol{\mu}\_{v\mid b}$ og $\boldsymbol{\Sigma}_{v\mid b}$ stabilisere seg på det som vi da kaller de balanserte ÅDT-verdiene, og tilhørende usikkerhet, for alle trafikklenkene. Algoritmen er spesifisert med pseudokode under (fra [Haug og Aldrin, 2022](https://nr.no/publikasjon/2070401/) )
 
 ![[algoritme_aadt.png]]
 #### **Fra retta til uretta trafikklenker**
@@ -271,10 +310,13 @@ Etter balanserte ÅDT-prediksjoner $\hat{\boldsymbol{v}}$ har blitt regnet ut p�
 Før de balanserte ÅDT-estimatene ble sendt til manuell kontroll, ble de kjørt gjennom en autogodkjenningsalgoritme slik at hvert estimat, i tillegg til usikkerhet, fikk en autogodkjent-status (godkjent/ikke godkjent). Fagpersonene som korrigerte verdiene kunne dermed fokusere ekstra på de som ikke var autogodkjent. 
 
 Autogodkjenninga baserer seg på både eALE og den predikerte usikkerheten. eALE er en funksjon av den predikerte trafikkmengden for ei gitt trafikklenke, $\hat{v}_i$, og det man bruker som sammenligningsgrunnlag, i dette tilfellet var det trafikkmengden fra i fjor, $v_i$. Vi regner ut eALE som
+
 $$
 eALE(v_i, \hat{v}_i) = \exp\{|\log(\hat v_i)-\log(v_i)|\} - 1 \ .
 $$
+
 Så definerer vi en terskelfunksjon basert på predikert ÅDT, som sier hvilke eALE vi aksepterer, altså, hvor store avvik vi aksepterer for en predikert trafikkmengde. Denne terskelfunksjonen er definert som 
+
 $$
 t(\hat{v}) = 
 \begin{cases}
@@ -284,7 +326,9 @@ t(\hat{v}) =
 0.2 & \text{if } \hat{v}_i \geq 50000 \ .
 \end{cases}
 $$
+
 I tillegg vurderes prediksjonen sammen med predikert usikkerhet. For sammenligningsverdien $v_i$, konstrueres en fiktiv usikkerhet basert på trafikkmengdens størrelse. Helt konkret settes denne som
+
 $$
 s(v_i) = 
 \begin{cases} 
@@ -296,17 +340,21 @@ s(v_i) =
 2000 & \text{if } v_i > 30000 \ .
 \end{cases}
 $$
+
 En predikert verdi kan da også forkastes dersom det ikke er noe overlapp i konfidensintervallene som resulterer fra usikkerheten regnet fra $s(v_i)$ og den predikerte usikkerheten til $\hat{v}_i$. 
 
 Samlet sett sier altså autogodkjenningsalgoritmen at en prediksjon autogodkjennes dersom $eALE(v_i, \hat{v}_i) < t(\hat{v}_i)$ og det er overlapp i konfidensintervallene til $v_i$ og $\hat{v}_i$.
+
 ## Tungbilandel-modellen
 Siden tungbil-andelen $t_i$ er et tall som varierer mellom 0 og 1, ble det brukt en beta-regresjon til å modellere denne andelen. Mer presist kan modellen som ble brukt beskrives som
+
 $$
 \begin{aligned}
 t_i &~ \sim \text{Beta}(\mu_i, \phi) \ , \\
 \text{logit}(\mu_i) &= \beta_0 + \beta_1x_1 + \beta_2x_2 + \dots + \beta_px_p \ ,
 \end{aligned}
 $$
+
 hvor $x_1, \dots, x_p$ er forklaringsvariablene som ble brukt i modellen. For denne modellen ble det valgt ut forklaringsvariabler på tilsvarende vis som for ÅDT-modellen. Formelen som ble brukt var:
 ```
 formula_heavy <- heavyRatio ~ 
