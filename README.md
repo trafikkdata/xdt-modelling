@@ -32,7 +32,7 @@ xdt-modelling/
 ├── data/
 │   ├── processed/                 # Cleaned, preprocessed data
 │   └── raw/                       # Original data files (read-only)
-└── docs/
+└── documentation/
     ├── data_dictionary.rmd        # Variable descriptions
     ├── methodology.rmd            # Statistical approach, assumptions
     └── model_results.rmd          # Final model performance
