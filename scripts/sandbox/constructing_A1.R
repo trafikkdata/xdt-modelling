@@ -260,6 +260,8 @@ build_incidence_matrix <- function(nodes, traffic_links){
   A1 <- matrix(ncol = length(traffic_link_ids))
   
   # Iterate over the traffic nodes
+  # Note: This iterates over the traffic nodes, but some of the traffic nodes
+  # will result in two (or more) rows in the incidence matrix.
   for(node in relevant_nodes){
     # Get legal turning movements for traffic node
     node_row <- dplyr::filter(nodes, id == node)
@@ -322,8 +324,16 @@ print(result2$constraint_rows)
 
 # Trondheim
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
+trondheim_data <- read_sf("data/processed/trondheim_data.geojson")
+
 A1 <- build_incidence_matrix(nodes = nodes, traffic_links = trondheim_data)
 
+examine_node_flow(A1, "3508236")
+
+
+
+# We get a problem at this node since it has one incoming link that has no outgoing link.
+# Need to figure out how to handle.
 problem_node <- filter(nodes, id == "3889039")
 res_test <- process_turning_movements(turning_movements_json = problem_node$legalTurningMovements, 
                                       link_ids = traffic_links$id, 
