@@ -12,12 +12,13 @@ source("R/model_validation.R")
 
 finnmark_data <- read_sf("data/processed/finnmark_data.geojson")
 aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
+nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 
 # Create spatial index - this is simply the row number for each traffic link
 finnmark_data$spatial.idx <- 1:nrow(finnmark_data)
 
 adj_sparse <- build_adjacency_matrix(finnmark_data)
-constraint_matrix <- build_flow_constraints(finnmark_data)
+constraint_matrix <- build_incidence_matrix(nodes, finnmark_data)
 
 
 formula <- aadt ~ minLanes +
