@@ -201,7 +201,7 @@ build_flow_constraints <- function(link_data) {
 #'
 #' @param turning_movements_json character string containing JSON data
 #' @param link_ids character vector of all possible link IDs  
-#' @param node_id character string identifying the physical node
+#' @param node_id character string identifying the traffic node
 #'
 #' @return list containing flow node constraints and metadata
 #'
@@ -236,11 +236,20 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
   for(i in seq_along(movements)) {
     movement <- movements[[i]]
     movements_df$incoming[i] <- movement$incomingId
-    movements_df$outgoing[[i]] <- unlist(movement$outgoingIds)
+    # Check if there are no outgoing traffic links
+    if(is.null(unlist(movement$outgoingIds))){
+      outgoing <- list(unlist(movement$outgoingIds))
+      print(paste("Node", node_id, 
+                  "has incomplete turning movement from traffic link", 
+                  movement$incomingId))
+    }else{
+      outgoing <- unlist(movement$outgoingIds)
+    }
+    movements_df$outgoing[[i]] <- outgoing
   }
   
   # Create flow nodes by grouping movements
-  flow_nodes <- create_flow_nodes(movements_df, node_id)
+  flow_nodes <- create_flow_nodes(movements_df = movements_df, node_id = node_id)
   
   # Build constraint matrix rows
   n_flow <- length(flow_nodes)
@@ -251,6 +260,7 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
   flow_node_names <- character(n_flow)
   
   for(i in seq_along(flow_nodes)) {
+    #print(flow_nodes[[i]])
     flow_node <- flow_nodes[[i]]
     flow_node_names[i] <- flow_node$name
     
@@ -289,7 +299,7 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
 #' 3. Each connected component becomes one flow node
 #' 
 #' @param movements_df data frame with incoming and outgoing columns
-#' @param node_id character string for the physical node
+#' @param node_id character string for the traffic node
 #'
 #' @return list of flow node objects
 #' 
@@ -316,12 +326,14 @@ create_flow_nodes <- function(movements_df, node_id) {
     incoming_link <- movements_df$incoming[i]
     outgoing_links <- movements_df$outgoing[[i]]
     
-    for(outgoing_link in outgoing_links) {
-      edges <- rbind(edges, data.frame(
-        from = incoming_link,
-        to = outgoing_link,
-        stringsAsFactors = FALSE
-      ))
+    if(!is.null(unlist(outgoing_links))){ # Skip over incoming links that have no outgoing links
+      for(outgoing_link in outgoing_links) {
+        edges <- rbind(edges, data.frame(
+          from = incoming_link,
+          to = outgoing_link,
+          stringsAsFactors = FALSE
+        ))
+      }
     }
   }
   
@@ -345,7 +357,7 @@ create_flow_nodes <- function(movements_df, node_id) {
       name = paste0(node_id, "_component_", i, "_", flow_type),
       incoming_links = component_incoming,
       outgoing_links = component_outgoing,
-      physical_node = node_id,
+      parent_node = node_id,
       flow_type = flow_type
     )
     
@@ -458,16 +470,19 @@ build_incidence_matrix <- function(nodes, traffic_links){
   A1 <- matrix(ncol = length(traffic_link_ids))
   
   # Iterate over the traffic nodes
+  # Note: This iterates over the traffic nodes, but some of the traffic nodes
+  # will result in two (or more) rows in the incidence matrix.
   for(node in relevant_nodes){
+    #print(node)
     # Get legal turning movements for traffic node
     node_row <- dplyr::filter(nodes, id == node)
     turning_movements <- node_row$legalTurningMovements
     
     # Process turning movements to get flow nodes and the corresponding row(s)
     # for the incidence matrix.
-    results <- process_turning_movements(turning_movements, 
-                                         traffic_link_ids, 
-                                         node)
+    results <- process_turning_movements(turning_movements_json = turning_movements, 
+                                         link_ids = traffic_link_ids, 
+                                         node_id = node)
     row_in_incidence_matrix <- results$constraint_rows
     A1 <- rbind(A1, row_in_incidence_matrix)
   }
