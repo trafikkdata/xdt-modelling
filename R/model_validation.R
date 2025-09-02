@@ -217,6 +217,54 @@ calculate_scores <- function(model, data){
 }
 
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Examine node flow ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+examine_node_flow <- function(A1, node_id){
+  rownames_contain_string <- which(grepl(node_id, rownames(A1)))
+  node_rows <- A1[rownames_contain_string, ]
+  
+  if(nrow(nonzero_cols) == 1){
+    nonzero_cols <- node_rows[node_rows != 0, drop = FALSE]
+  }
+  nonzero_cols <- node_rows[, colSums(abs(node_rows) != 0) > 0, drop = FALSE]
+  
+  return(nonzero_cols)
+}
 
+get_turning_movements <- function(nodes, node_id){
+  node_row <- filter(nodes, id == node_id)
+  
+  turning_movements_df <- make_turning_movements_df(
+    turning_movements_json = node_row$legalTurningMovements, node_id = node_id)
+  
+  return(turning_movements_df)
+}
 
+make_turning_movements_df <- function(turning_movements_json, node_id){
+  
+  # Clean and parse JSON
+  movements <- jsonlite::fromJSON(turning_movements_json, simplifyVector = FALSE)
+  
+  # Convert to data frame for easier processing
+  movements_df <- data.frame(
+    incoming = character(length(movements)),
+    outgoing = I(vector("list", length(movements))),  # Use I() to keep as list column
+    stringsAsFactors = FALSE
+  )
+  
+  for(i in seq_along(movements)) {
+    movement <- movements[[i]]
+    movements_df$incoming[i] <- movement$incomingId
+    movements_df$outgoing[[i]] <- unlist(movement$outgoingIds)
+  }
+  
+  return(movements_df)
+}
+
+print_turning_movements_for_link_at_node <- function(node_id, link_id, nodes){
+  turns_df <- get_turning_movements(nodes = nodes, node_id = node_id)
+  cat("Legal turning movements for traffic link", link_id, "at traffic node", node_id, ": \n")
+  print(turns_df[turns_df[,1] == link_id, 2][[1]])
+}
