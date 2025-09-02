@@ -12,7 +12,7 @@ source("R/model_validation.R")
 # Load data and matrices ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-data <- readRDS("data/processed/preprocessed_data.rds")
+data <- readRDS("data/processed/engineered_data.rds")
 aadt2024 <- load_data(config$data_paths$raw$aadt_results)
 
 
@@ -323,18 +323,3 @@ overdispersion_spatial <- sum(pearson_resid_spatial^2, na.rm=TRUE) /
 print(paste("Overdispersion without spatial effects:", round(overdispersion_no_spatial, 3)))
 print(paste("Overdispersion with spatial effects:", round(overdispersion_spatial, 3)))
 
-# RECOMMENDATION LOGIC
-if(overdispersion_spatial < 1.5 && overdispersion_no_spatial > 3) {
-  print("✓ Spatial effects are capturing the overdispersion")
-  print("✓ Poisson with spatial structure is adequate")
-  recommendation <- "POISSON"
-} else if(abs(mae_median - mae_pois) < 0.5 && nb_cpo > pois_cpo) {
-  print("✓ Similar point predictions but NB has better likelihood")
-  recommendation <- "NEGATIVE BINOMIAL"
-} else if(mae_pois < mae_median && pois_cpo > nb_cpo) {
-  print("✓ Poisson wins on both point predictions and likelihood")
-  recommendation <- "POISSON"
-} else {
-  print("✓ Mixed results - go with theoretical appropriateness")
-  recommendation <- "NEGATIVE BINOMIAL"
-}
