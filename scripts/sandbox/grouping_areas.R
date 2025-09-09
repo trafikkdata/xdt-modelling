@@ -1,6 +1,7 @@
 library(sf)
 library(dplyr)
 library(reticulate)
+library(jsonlite)
 
 #source("R/utilities.R")
 #source("R/model_fitting.R")
@@ -16,11 +17,13 @@ source_python("python/balancing/cluster_on_prelim_aadt.py")
 data <- readRDS("data/processed/preprocessed_data.rds")
 geojson_nodes <- fromJSON("data/raw/traffic-nodes-2024.geojson", simplifyVector = FALSE)
 
+data$prelimAadt <- data$aadt
+
 # Run Python via R + reticulate
 cluster_data <- add_cluster_id_to_df(df = data, geojson_data = geojson_nodes)
 
 
-# Get pre-run balancing clusters from preprocessed data
+# Get balancing clusters generated directly in Python 
 balancing_clusters <- read.csv("data/processed/balancing_clusters.csv")
 
 
