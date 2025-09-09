@@ -17,7 +17,7 @@ data <- readRDS("data/processed/engineered_data.rds")
 aadt2024 <- load_data(config$data_paths$raw$aadt_results)
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 
-one_county <- "Møre og Romsdal"
+one_county <- "Innlandet"
 
 county_data <- filter(data, county == one_county)
 
@@ -93,9 +93,46 @@ leaflet::leaflet(retta, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, z
 
 
 
+# Testing functions
 
-
-print_turning_movements_for_link_at_node(node_id = "332127", link_id = "0.23254915-0.19868994@319516-WITH", nodes)
+print_turning_movements_for_link_at_node(node_id = "347086", link_id = "0.0-1.0@319629-WITH", nodes)
 
 turns <- get_turning_movements(nodes, node_id = "271925")
 
+
+
+#model <- fit_model(data, c("minLanes", "functionalRoadClass"))
+model_county <- fit_model(county_data, c("minLanes", "functionalRoadClass"))
+
+national_res <- fit_national_model(data, 
+                                   formula_covariates = c("minLanes", "functionalRoadClass"),
+                                   grouping_variable = "county", 
+                                   groups = unique(data$county), 
+                                   inla_scope = "local")
+
+res <- run_modeling_pipeline(groups_to_process = c("Telemark", "Buskerud"))
+
+
+retta <- res$data %>% 
+  add_geometry_to_traffic_links() %>% 
+  #st_as_sf() %>% 
+  mutate(text = paste0("INLA: ", pred, 
+                       "<br>Balanced: ", balanced_pred,
+                       #"<br>ÅDT 2023: ", ÅDT.fjorårets,
+                       "<br>Målt eller utleda ÅDT: ", aadt,
+                       "<br>ID: ", id))
+nvdb <- nvdb_objects()
+
+pal <- leaflet::colorBin(
+  palette = "viridis",
+  domain = NULL, 
+  reverse = TRUE,
+  na.color = "#88807b"
+)
+
+leaflet::leaflet(retta, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
+  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
+  leaflet::addPolylines(
+    color = ~ pal(retta[["balanced_pred"]]),
+    popup = ~ text,
+    opacity = 1)
