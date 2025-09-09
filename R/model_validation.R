@@ -265,6 +265,11 @@ make_turning_movements_df <- function(turning_movements_json, node_id){
 
 print_turning_movements_for_link_at_node <- function(node_id, link_id, nodes){
   turns_df <- get_turning_movements(nodes = nodes, node_id = node_id)
-  cat("Legal turning movements for traffic link", link_id, "at traffic node", node_id, ": \n")
-  print(turns_df[turns_df[,1] == link_id, 2][[1]])
+  incoming <- turns_df[, 1]
+  if(!link_id %in% incoming){
+    cat("Traffic link", link_id, "is not an incoming link to node", node_id, ".")
+  }else{
+    cat("Legal turning movements for traffic link", link_id, "at traffic node", node_id, ": \n")
+    print(turns_df[turns_df[,1] == link_id, 2][[1]])
+  }
 }
