@@ -4,11 +4,12 @@
 
 run_modeling_pipeline <- function(
     grouping_variable = "county",
+    groups_to_process = "Buskerud", # vector of group names or "all"
     covariates = c("functionalRoadClass"),
     inla_scope = "local",  # "local" or "national"
-    groups_to_process = "Buskerud", # vector of group names or "all"
+    balance_predictions = TRUE,
+    balance_i_intersections = FALSE,
     generate_plots = TRUE,
-    save_intermediate = TRUE
 ) {
   # Load all data once
   data <- readRDS("data/processed/engineered_data.rds")
@@ -36,6 +37,14 @@ run_modeling_pipeline <- function(
   
   diagnostics$inla_summary <- national_model$model_summary
   
+  cat("Model successfully fit.\n")
+  
+  if(!balance_predictions){
+    # Return comprehensive results
+    return(list(data = data, 
+                diagnostics = diagnostics))
+  }
+  
   # Initialize result list
   group_data_list <- list()
   group_diagnostics <- list()
@@ -47,7 +56,8 @@ run_modeling_pipeline <- function(
     
     balanced_group_results <- balance_predictions(
       data = group_data, nodes = nodes, 
-      pred = group_data$pred, sd = group_data$sd)
+      pred = group_data$pred, sd = group_data$sd,
+      balance_i_intersections = balance_i_intersections)
     
     group_data$balanced_pred <- balanced_group_results$results$balanced_pred
     group_data$balanced_sd <- balanced_group_results$results$balanced_sd
@@ -65,7 +75,7 @@ run_modeling_pipeline <- function(
   data <- dplyr::full_join(data, balanced_preds, 
                            by = dplyr::join_by(id, county))
   
-  cat("Model successfully fit and balanced.\n")
+  cat("Predictions successfully balanced.\n")
   # Return comprehensive results
   return(list(data = data, 
               diagnostics = diagnostics))
@@ -203,12 +213,13 @@ save_group_results <- function(group_results, group_name, output_dir) {
 balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NULL, 
                                 constraint_matrix = NULL,
                                 colname_aadt = "aadt", colname_sd = "aadt_sd", 
-                                lambda = 1e-10){
+                                lambda = 1e-10, balance_i_intersections){
   # Step 0: Set up data and constraint matrices
   # Flow constraints
-  cat("Building constraint matrix...\n")
+  cat("  Building constraint matrix...\n")
   if(is.null(constraint_matrix)){
-    A1 <- build_incidence_matrix(nodes, data)
+    A1 <- build_incidence_matrix(nodes, data, 
+                                 balance_i_intersections = balance_i_intersections)
   }else{
     A1 <- constraint_matrix
   }
@@ -217,7 +228,7 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   n_e <- nrow(data) # No. of traffic links (edges)
   n_n <- nrow(A1) # No. of traffic nodes (with entering and exiting traffic)
   
-  cat("Building measurement matrix...\n")
+  cat("  Building measurement matrix...\n")
   A2 <- as.matrix(build_measurement_matrix(data, colname_aadt = colname_aadt))
   d <- na.omit(data[[colname_aadt]])
   Sigma_epsilon_mark <- diag(na.omit(data[[colname_sd]])^2)
@@ -248,7 +259,7 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   A2 <- as.matrix(A2)
   A <- rbind(A1, A2)
   
-  cat("Creating Sigma_vb...\n")
+  cat("  Creating Sigma_vb...\n")
   Sigma_vb <- Sigma_v %*% t(A)
   
   
@@ -263,7 +274,7 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   Sigma_b <- A %*% Sigma_v %*% t(A) + Sigma_epsilon
   Sigma_b <- (Sigma_b + t(Sigma_b))/2  # Ensure symmetry
   
-  cat("Inverting Sigma_b...\n")
+  cat("  Inverting Sigma_b...\n")
   # Step 5: Robust inversion
   if (rank_deficit > 0) {
     # Use pseudoinverse for rank-deficient systems
@@ -358,6 +369,56 @@ build_adjacency_matrix <- function(link_data) {
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Build incidence matrix ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#' Build incidence matrix from traffic links and constructed flow nodes
+#'
+#' @param nodes data frame containing legalTurningMovements column (which has JSON syntax)
+#' @param traffic_links traffic link data set
+#'
+#' @return incidence matrix
+#' 
+build_incidence_matrix <- function(nodes, traffic_links, balance_i_intersections){
+  # Filter out the nodes that appear in the traffic link data
+  nodes_in_traffic_links <- unique(c(traffic_links$startTrafficNodeId, 
+                             traffic_links$endTrafficNodeId))
+  
+  if(!balance_i_intersections){
+    # Get all nodes that are not I-intersections
+    not_i_intersections <- remove_i_intersections(nodes)
+    relevant_nodes <- intersect(not_i_intersections, nodes_in_traffic_links)
+  }else{
+    relevant_nodes <- nodes_in_traffic_links
+  }
+  
+  
+  # Get character vector of traffic link id's
+  traffic_link_ids <- traffic_links$id
+  
+  # Initialize matrix
+  A1 <- matrix(ncol = length(traffic_link_ids))
+  
+  # Iterate over the traffic nodes
+  # Note: This iterates over the traffic nodes, but some of the traffic nodes
+  # will result in two (or more) rows in the incidence matrix.
+  for(node in relevant_nodes){
+    #print(node)
+    # Get legal turning movements for traffic node
+    node_row <- dplyr::filter(nodes, id == node)
+    turning_movements <- node_row$legalTurningMovements
+    
+    # Process turning movements to get flow nodes and the corresponding row(s)
+    # for the incidence matrix.
+    results <- process_turning_movements(turning_movements_json = turning_movements, 
+                                         link_ids = traffic_link_ids, 
+                                         node_id = node)
+    row_in_incidence_matrix <- results$constraint_rows
+    A1 <- rbind(A1, row_in_incidence_matrix)
+  }
+  
+  # Remove first row since this is just NA from initialization
+  A1 <- A1[-1, ]
+  
+  return(A1)
+}
 
 identify_generalised_i_intersections <- function(nodes){
   #nodes$number_of_traffic_links <- lengths(nodes$connectedTrafficLinkIds)
@@ -370,9 +431,17 @@ identify_generalised_i_intersections <- function(nodes){
   
 }
 
-identify_i_intersections <- function(nodes){
-  two_in_two_out <- dplyr::filter(nodes, numberOfIncomingLinks == 2 & numberOfOutgoingLinks == 2)
-  two_parent_links <- dplyr::filter(two_in_two_out, numberOfUndirectedLinks == 2)
+remove_i_intersections <- function(nodes){
+  i_intersections <- dplyr::filter(
+    nodes, 
+    numberOfIncomingLinks == 2,
+    numberOfOutgoingLinks == 2,
+    numberOfUndirectedLinks == 2)
+  
+  # Return all the nodes that are not I-intersections
+  nodes_without_i_intersections <- setdiff(nodes$id, i_intersections$id)
+  # TODO: Add that number of candidate links is larger than number of traffic links
+  return(nodes_without_i_intersections)
 }
 
 
@@ -677,46 +746,7 @@ determine_flow_type <- function(incoming_links, outgoing_links) {
   }
 }
 
-#' Build incidence matrix from traffic links and constructed flow nodes
-#'
-#' @param nodes data frame containing legalTurningMovements column (which has JSON syntax)
-#' @param traffic_links traffic link data set
-#'
-#' @return incidence matrix
-#' 
-build_incidence_matrix <- function(nodes, traffic_links){
-  # Filter out the nodes that appear in the traffic link data
-  relevant_nodes <- unique(c(traffic_links$startTrafficNodeId, traffic_links$endTrafficNodeId))
-  
-  # Get character vector of traffic link id's
-  traffic_link_ids <- traffic_links$id
-  
-  # Initialize matrix
-  A1 <- matrix(ncol = length(traffic_link_ids))
-  
-  # Iterate over the traffic nodes
-  # Note: This iterates over the traffic nodes, but some of the traffic nodes
-  # will result in two (or more) rows in the incidence matrix.
-  for(node in relevant_nodes){
-    #print(node)
-    # Get legal turning movements for traffic node
-    node_row <- dplyr::filter(nodes, id == node)
-    turning_movements <- node_row$legalTurningMovements
-    
-    # Process turning movements to get flow nodes and the corresponding row(s)
-    # for the incidence matrix.
-    results <- process_turning_movements(turning_movements_json = turning_movements, 
-                                         link_ids = traffic_link_ids, 
-                                         node_id = node)
-    row_in_incidence_matrix <- results$constraint_rows
-    A1 <- rbind(A1, row_in_incidence_matrix)
-  }
-  
-  # Remove first row since this is just NA from initialization
-  A1 <- A1[-1, ]
-  
-  return(A1)
-}
+
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
