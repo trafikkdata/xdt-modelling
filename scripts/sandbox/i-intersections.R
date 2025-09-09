@@ -1,8 +1,9 @@
-# I intersections
+# I-intersections
 
 library(sf)
 library(dplyr)
 library(INLA)
+nvdb <- nvdb_objects()
 
 #config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
 
