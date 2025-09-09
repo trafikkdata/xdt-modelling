@@ -136,3 +136,37 @@ leaflet::leaflet(retta, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, z
     color = ~ pal(retta[["balanced_pred"]]),
     popup = ~ text,
     opacity = 1)
+
+
+balanced_i_intersections <- run_modeling_pipeline(groups_to_process = "all", 
+                                                  balance_i_intersections = TRUE)
+unbalanced_i_intersections <- run_modeling_pipeline(groups_to_process = "all", 
+                                                    balance_i_intersections = FALSE)
+
+
+good_formula <- c("functionalRoadClass:maxLanes", 
+                  "minLanes:roadCategory", 
+                  "functionalRoadClass:roadCategory", 
+                  "functionalRoadClass", 
+                  "maxLanes", 
+                  "minLanes", 
+                  "roadCategory", 
+                  "hasOnlyPublicTransportLanes", 
+                  "isFerryTrafficLink", 
+                  "hasTouristRoad")
+
+good_formula_merged <- c("functionalRoadClass_merged:maxLanes_merged", 
+                  "minLanes_merged:roadCategory", 
+                  "functionalRoadClass_merged:roadCategory", 
+                  "functionalRoadClass_merged", 
+                  "maxLanes_merged", 
+                  "minLanes_merged", 
+                  "roadCategory", 
+                  "hasOnlyPublicTransportLanes", 
+                  "isFerryTrafficLink", 
+                  "hasTouristRoad")
+
+merged_covariates <- run_modeling_pipeline(groups_to_process = "Trøndelag", 
+                                           covariates = good_formula_merged)
+original_covariates <- run_modeling_pipeline(groups_to_process = "Trøndelag",
+                                             covariates = good_formula)
