@@ -214,6 +214,7 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
                                 constraint_matrix = NULL,
                                 colname_aadt = "aadt", colname_sd = "aadt_sd", 
                                 lambda = 1e-10, balance_i_intersections){
+  start_time <- Sys.time()
   # Step 0: Set up data and constraint matrices
   # Flow constraints
   cat("  Building constraint matrix...\n")
@@ -298,6 +299,7 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   # Some elements may be less than 0, set them to small number
   mu_v_given_b[mu_v_given_b <= 0] <- 1
   
+  end_time <- Sys.time()
   
   # Step 7: Return results with diagnostics
   
@@ -317,7 +319,8 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
       n_measurements = nrow(A2),
       n_links = ncol(A),
       n_constraints = nrow(A1),
-      underdetermined = ncol(A2) > nrow(A2)
+      underdetermined = ncol(A2) > nrow(A2),
+      runtime = end_time - start_time
     ),
     matrices = list(A1 = A1, A2 = A2)
   ))
