@@ -26,6 +26,11 @@ fill_missing_entries <- function(df, columns_to_fill = NULL){
       !stringr::str_starts(cols_with_missing, "bestDataSourceAadt_")]
   }
   
+  Mode <- function(x) {
+    ux <- unique(x)
+    ux[which.max(tabulate(match(x, ux)))]
+  }
+  
   # Handle NA's
   mode_df <- df %>% dplyr::select(dplyr::all_of(columns_to_fill)) %>% 
     dplyr::summarise(dplyr::across(dplyr::everything(), Mode)) %>% 
@@ -34,10 +39,6 @@ fill_missing_entries <- function(df, columns_to_fill = NULL){
   return(df)
 }
 
-Mode <- function(x) {
-  ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
-}
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Merge sparse categories ----
