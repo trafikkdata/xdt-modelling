@@ -2,10 +2,23 @@
 # Calculate approved ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-calculate_approved <- function(model = NULL, 
-                               pred = round(model$summary.fitted.values[, "0.5quant"]), 
-                               sd = round(model$summary.fitted.values[, "sd"]), 
-                               data, data_manual, truth_name = "ÅDT.offisiell", model_name = "inla"){
+calculate_approved <- function(
+    model = NULL, 
+    pred = NULL, 
+    sd = NULL, 
+    data, 
+    data_manual, 
+    truth_name = "ÅDT.offisiell", 
+    model_name = "inla"){
+  
+  if(!is.null(model)){
+    pred <- round(model$summary.fitted.values[, "0.5quant"])
+    sd <- round(model$summary.fitted.values[, "sd"])
+  }
+  if(is.null(model) & is.null(pred) & is.null(sd)){
+    pred <- data$balanced_pred
+    sd <- data$balanced_sd
+  }
   
   # Extract predictions
   data$pred <- pred
@@ -13,6 +26,7 @@ calculate_approved <- function(model = NULL,
   
   # Check that truth column is numeric
   data_manual[[truth_name]] <- as.numeric(data_manual[[truth_name]])
+  #data_manual$ÅDT.offisiell <- as.numeric(data_manual$ÅDT.offisiell)
   
   ## If NaN or above 20,000, cap the value to 20,000
   data$sd[is.na(data$sd) | data$sd > 20000] <- 20000
