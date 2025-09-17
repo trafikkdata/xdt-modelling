@@ -3,9 +3,9 @@ library(dplyr)
 library(reticulate)
 library(jsonlite)
 
-#source("R/utilities.R")
-#source("R/model_fitting.R")
-#source("R/model_validation.R")
+source("R/utilities.R")
+source("R/model_fitting.R")
+source("R/model_validation.R")
 
 # Load the Python functions once
 source_python("python/balancing/cluster_on_prelim_aadt.py")
@@ -68,5 +68,51 @@ leaflet::leaflet(subset_lenke, options = leaflet::leafletOptions(crs = nvdb$nvdb
 
 
 # Count number of groups per traffic link, and find the traffic link with the fewest groups
+
+
+
+
+# New approach -----------------------------------------------------------------
+# Run the clustering
+cluster_mapping <- cluster_road_network(data)
+
+cluster_mapping <- final_assignments
+# Merge with your original data
+data_with_clusters <- data %>% left_join(cluster_mapping, by = "id")
+
+# Check results
+print(paste("Missing cluster assignments:", sum(is.na(data_with_clusters$cluster_id))))
+print(paste("Duplicate assignments:", sum(duplicated(cluster_mapping$id))))
+
+telemark_clusters <- data_with_clusters %>% filter(county == "Trøndelag") %>% add_geometry_to_traffic_links()
+
+nvdb <- nvdb_objects()
+pal <- leaflet::colorBin(
+  palette = "viridis",
+  domain = NULL, 
+  reverse = TRUE,
+  na.color = "#88807b"
+)
+leaflet::leaflet(telemark_clusters, 
+                 options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
+  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
+  leaflet::addPolylines(
+    color = ~ pal(telemark_clusters[["cluster_id"]]),
+    opacity = 1)
+
+# Looking at results from Johannes ----
+clustered <- read.csv("../../directed-traffic-links-2024-clustered.csv")
+clustered_simple <- read.csv("../../directed-traffic-links-2024-clustered-simple.csv")
+
+
+(number_of_groups <- clustered$cluster_id %>% unique() %>% length())
+(traffic_links_per_group <- length(unique(clustered$id))/number_of_groups)
+(number_of_groups_per_traffic_link <- clustered %>% group_by(id) %>% count() %>% arrange(desc(n)))
+
+
+
+(number_of_groups <- clustered_simple$cluster_id %>% unique() %>% length())
+(traffic_links_per_group <- length(unique(clustered_simple$id))/number_of_groups)
+(number_of_groups_per_traffic_link <- clustered_simple %>% group_by(id) %>% count() %>% arrange(desc(n)))
 
 
