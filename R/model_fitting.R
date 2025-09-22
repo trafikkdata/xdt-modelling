@@ -443,23 +443,27 @@ build_incidence_matrix <- function(nodes, traffic_links, balance_i_intersections
   return(A1)
 }
 
-identify_generalised_i_intersections <- function(nodes){
-  #nodes$number_of_traffic_links <- lengths(nodes$connectedTrafficLinkIds)
-  nodes$number_of_traffic_links <- nodes$numberOfIncomingLinks + nodes$numberOfOutgoingLinks
+remove_generalised_i_intersections <- function(nodes){
+  nodes$number_of_traffic_links <- lengths(nodes$connectedTrafficLinkIds)
+  #nodes$number_of_traffic_links <- nodes$numberOfIncomingLinks + nodes$numberOfOutgoingLinks
   nodes$number_of_candidate_links <- lengths(nodes$connectedTrafficLinkCandidateIds)
     
-  generalised_i_intersections <- dplyr::filter(nodes, )
+  generalised_i_intersections <- dplyr::filter(nodes, number_of_traffic_links < number_of_candidate_links)
   
   
   
 }
 
 remove_i_intersections <- function(nodes){
+  nodes$number_of_traffic_links <- lengths(nodes$connectedTrafficLinkIds)
+  nodes$number_of_candidate_links <- lengths(nodes$connectedTrafficLinkCandidateIds)
+  
   i_intersections <- dplyr::filter(
     nodes, 
     numberOfIncomingLinks == 2,
     numberOfOutgoingLinks == 2,
-    numberOfUndirectedLinks == 2)
+    numberOfUndirectedLinks == 2,
+    number_of_traffic_links < number_of_candidate_links)
   
   # Return all the nodes that are not I-intersections
   nodes_without_i_intersections <- setdiff(nodes$id, i_intersections$id)
