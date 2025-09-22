@@ -18,7 +18,7 @@ aadt2024 <- load_data(config$data_paths$raw$aadt_results)
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 
 
-# Testing functions
+# Misc. tests ------------------------------------------------------------------
 
 print_turning_movements_for_link_at_node(node_id = "347086", 
                                          link_id = "0.0-1.0@319629-WITH", 
@@ -26,6 +26,15 @@ print_turning_movements_for_link_at_node(node_id = "347086",
 
 turns <- get_turning_movements(nodes, node_id = "271925")
 
+# Find number of traffic links per county
+data %>% group_by(county) %>% count() %>% arrange(desc(n))
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Test "fit_group_model" function and "fit_national_model" ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+# These are internal functions called by "run_modeling_pipeline".
 
 
 # model <- fit_model(data, c("minLanes", "functionalRoadClass")) # This takes a long time to run
@@ -39,9 +48,12 @@ national_res <- fit_national_model(
   inla_scope = "local")
 
 
-# ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Test "run_modeling_pipeline" function for one county ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-res <- run_modeling_pipeline(groups_to_process = c("Trøndelag"))
+res <- run_modeling_pipeline(inla_groups_to_process = c("Buskerud"), 
+                             inla_grouping_variable = "county")
 
 
 retta <- res$data %>% 
@@ -61,7 +73,8 @@ pal <- leaflet::colorNumeric(
   domain = retta$balanced_pred
 )
 
-leaflet::leaflet(retta, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
+leaflet::leaflet(retta, 
+                 options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
   leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
   leaflet::addPolylines(
     color = ~ pal(balanced_pred),
@@ -71,29 +84,10 @@ leaflet::leaflet(retta, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, z
 
 
 
-# Balancing I-intersections or not ---------------------------------------------
-balanced_i_intersections <- run_modeling_pipeline(groups_to_process = "all", 
-                                                  balance_i_intersections = TRUE)
-saveRDS(balanced_i_intersections, "results/balanced_i_intersections.rds")
-balanced_i_intersections <- readRDS("results/balanced_i_intersections.rds")
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Merged vs not merged sparse covariate categories ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-unbalanced_i_intersections <- run_modeling_pipeline(groups_to_process = "all", 
-                                                    balance_i_intersections = FALSE)
-saveRDS(balanced_i_intersections, "results/unbalanced_i_intersections.rds")
-
-
-approved_bali <- calculate_approved(data = balanced_i_intersections$data, 
-                                    data_manual = aadt2024,
-                                    model_name = "balanced_i_intersections")
-approved_unbali <- calculate_approved(data = unbalanced_i_intersections$data, 
-                                    data_manual = aadt2024,
-                                    model_name = "unbalanced_i_intersections")
-approved_bali$approved
-approved_unbali$approved
-
-
-
-# Merged vs not merged sparse covariate categories -----------------------------
 good_formula <- c("functionalRoadClass:maxLanes", 
                   "minLanes:roadCategory", 
                   #"functionalRoadClass:roadCategory", 
@@ -130,8 +124,37 @@ original_approved <- calculate_approved(data = original_covariates$data,
 rbind(merged_approved$approved, original_approved$approved)
 
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Balancing I-intersections or not ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-# Running the model separately vs jointly for all of Norway
+balanced_i_intersections <- run_modeling_pipeline(inla_groups_to_process = "all", 
+                                                  balancing_grouping_variable = "county",
+                                                  covariates = good_formula_merged,
+                                                  balance_i_intersections = TRUE)
+saveRDS(balanced_i_intersections, "results/balanced_i_intersections.rds")
+balanced_i_intersections <- readRDS("results/balanced_i_intersections.rds")
+
+unbalanced_i_intersections <- run_modeling_pipeline(inla_groups_to_process = "all",
+                                                    balancing_grouping_variable = "county",
+                                                    covariates = good_formula_merged,
+                                                    balance_i_intersections = FALSE)
+saveRDS(unbalanced_i_intersections, "results/unbalanced_i_intersections.rds")
+
+
+approved_bali <- calculate_approved(data = balanced_i_intersections$data, 
+                                    data_manual = aadt2024,
+                                    model_name = "balanced_i_intersections")
+approved_unbali <- calculate_approved(data = unbalanced_i_intersections$data, 
+                                      data_manual = aadt2024,
+                                      model_name = "unbalanced_i_intersections")
+rbind(approved_bali$approved, approved_unbali$approved)
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Running the model separately vs jointly for all of Norway ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
 separate_model <- run_modeling_pipeline(groups_to_process = "all", 
                                         inla_scope = "local",
                                         covariates = good_formula_merged,
@@ -153,5 +176,43 @@ joint <- calculate_approved(data = joint_model$data,
                                         model_name = "joint")
 rbind(separate$approved, joint$approved)
 
-sample_data <- data[1:5, c("id", "startTrafficNodeId", "endTrafficNodeId", "aadt")]
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Trying to recreate the best results so far ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+covariates <- c("functionalRoadClass:maxLanes",
+                "minLanes:roadCategory",
+                "functionalRoadClass",
+                "maxLanes",
+                "roadCategory")
+
+joint_model <- run_modeling_pipeline(inla_groups_to_process = "all", 
+                                     covariates = covariates,
+                                     balance_predictions = FALSE)
+
+joint <- calculate_approved(data = joint_model$data,
+                            pred = joint_model$data$pred,
+                            sd = joint_model$data$sd,
+                            data_manual = aadt2024,
+                            model_name = "joint")
+
+joint$approved
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Testing new grouping from Johannes with the pipeline ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+data <- readRDS("data/processed/engineered_data.rds")
+
+clustered <- read.csv("../../directed-traffic-links-2024-clustered.csv")
+
+data_w_cluster <- dplyr::full_join(data, clustered, by = join_by("id"))
+
+balanced_in_clusters <- run_modeling_pipeline(
+  data = data,
+  balancing_grouping_variable = clustered,
+  covariates = good_formula_merged
+  )
