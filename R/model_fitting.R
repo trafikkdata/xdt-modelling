@@ -3,41 +3,42 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 run_modeling_pipeline <- function(
-    grouping_variable = "county",
-    groups_to_process = "Buskerud", # vector of group names or "all"
+    data = NULL,
+    inla_grouping_variable = NULL,
+    inla_groups_to_process = "all",
+    balancing_grouping_variable = inla_grouping_variable, # Can be a character vector, or a data frame containing the ID's and the group assignments
+    #grouping_variable = "county",
+    #groups_to_process = "Buskerud", # vector of group names or "all"
     covariates = c("functionalRoadClass"),
-    inla_scope = "local",  # "local" or "national"
+    #inla_scope = "local",  # "local" or "national"
     balance_predictions = TRUE,
     balance_i_intersections = FALSE,
-    generate_plots = TRUE,
+    generate_plots = TRUE
 ) {
-  # Load all data once
-  data <- readRDS("data/processed/engineered_data.rds")
+  
+  if(is.null(data)){
+    data <- readRDS("data/processed/engineered_data.rds")
+  }
   #aadt2024 <- load_data(config$data_paths$raw$aadt_results)
   nodes <- sf::read_sf("data/raw/traffic-nodes-2024.geojson")
   
   # Filter out groups to process
-  if(groups_to_process != "all"){
-    data <- dplyr::filter(data, .data[[grouping_variable]] %in% groups_to_process)
+  if(inla_groups_to_process != "all"){
+    data <- dplyr::filter(data, .data[[inla_grouping_variable]] %in% inla_groups_to_process)
   }
-  
-  # Get list of groups to process
-  groups <- unique(data[[grouping_variable]])
   
   diagnostics <- list()
   
   # Fit national model either all in one, or divided up by the grouping categories
-  national_model <- fit_national_model(data, covariates,
-                                       grouping_variable = grouping_variable, 
-                                       groups = groups, 
-                                       inla_scope = inla_scope)
+  national_model <- fit_national_model(data, 
+                                       covariates,
+                                       inla_grouping_variable)
   
-  data <- dplyr::full_join(data, national_model$inla_result, 
-                           by = dplyr::join_by(id, county))
+  data <- dplyr::full_join(data, national_model$inla_result)
   
   diagnostics$inla_summary <- national_model$model_summary
   
-  cat("Model successfully fit.\n")
+  cat("INLA model successfully fit.\n")
   
   if(!balance_predictions){
     # Return comprehensive results
@@ -45,35 +46,14 @@ run_modeling_pipeline <- function(
                 diagnostics = diagnostics))
   }
   
-  # Initialize result list
-  group_data_list <- list()
-  group_diagnostics <- list()
+  # Balancing happens here
+  balanced_predictions <- balance_predictions(data, nodes, 
+                                              balancing_grouping_variable, 
+                                              balance_i_intersections)
   
-  # Loop through groups calling fit_and_balance_for_group()
-  for(group in groups){
-    cat("Balancing predictions for group: ", group, "\n")
-    group_data <- prepare_group_data(data, group, grouping_variable)
-    
-    balanced_group_results <- balance_predictions(
-      data = group_data, nodes = nodes, 
-      pred = group_data$pred, sd = group_data$sd,
-      balance_i_intersections = balance_i_intersections)
-    
-    group_data$balanced_pred <- balanced_group_results$results$balanced_pred
-    group_data$balanced_sd <- balanced_group_results$results$balanced_sd
-    group_data_list[[group]] <- dplyr::select(group_data, id, 
-                                              balanced_pred, balanced_sd)
-    
-    group_diagnostics[[group]] <- list(
-      diagnostics = balanced_group_results$diagnostics,
-      incidence_matrix = balanced_group_results$matrices$A1)
-  }
-  # Combine results across all groups
-  balanced_preds <- dplyr::bind_rows(group_data_list, .id = "county")
-  diagnostics$balancing_diagnostics <- group_diagnostics
+  data <- dplyr::full_join(data, balanced_predictions$balanced_res)
   
-  data <- dplyr::full_join(data, balanced_preds, 
-                           by = dplyr::join_by(id, county))
+  diagnostics$balancing_diagnostics <- balanced_predictions$diagnostics
   
   cat("Predictions successfully balanced.\n")
   # Return comprehensive results
@@ -86,7 +66,7 @@ run_modeling_pipeline <- function(
 # Data preparation functions ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-prepare_group_data <- function(all_data, group_name, grouping_variable) {
+extract_group_data <- function(all_data, group_name, grouping_variable) {
   # Filter using the .data pronoun to reference the column name
   group_data <- dplyr::filter(all_data, .data[[grouping_variable]] == group_name)
 
@@ -97,12 +77,12 @@ prepare_group_data <- function(all_data, group_name, grouping_variable) {
 # INLA model fitting functions ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-fit_national_model <- function(data, covariates, 
-                               grouping_variable = NULL, groups = NULL, 
-                               inla_scope) {
-  if (inla_scope == "local") {
+fit_national_model <- function(data, covariates, inla_grouping_variable) {
+  if (!is.null(inla_grouping_variable)) {
     # Fit model on group_data only
     cat("Fitting INLA model on all groups... ------------- \n")
+    
+    groups <- unique(data[[inla_grouping_variable]])
     
     group_data_list <- list()
     summary_list <- list()
@@ -110,10 +90,11 @@ fit_national_model <- function(data, covariates,
     for(group in groups){
       cat("  Fitting model for group: ", group, "\n")
       # Extract group data
-      group_data <- prepare_group_data(data, group, grouping_variable)
+      group_data <- extract_group_data(data, group, 
+                                       grouping_variable = inla_grouping_variable)
       
       # Fit model on group data
-      results <- fit_model(group_data, covariates)
+      results <- fit_group_model(group_data, covariates)
       
       # Extract results
       group_data$pred <- results$posterior_median
@@ -125,13 +106,13 @@ fit_national_model <- function(data, covariates,
     
     return(list(inla_result = predictions, model_summary = summary_list))
       
-  } else if (inla_scope == "national") {
+  } else if (is.null(inla_grouping_variable)) {
     # Fit model on national data, extract group predictions
     cat("Fitting national INLA model... ------------- \n")
     
     adjacency_matrix <- readRDS("data/processed/adjacency_matrix_2024.rds")
     
-    results <- fit_model(data, covariates, adjacency_matrix)
+    results <- fit_group_model(data, covariates, adjacency_matrix)
     data$pred <- results$posterior_median
     data$sd <- results$posterior_sd
     
@@ -141,7 +122,7 @@ fit_national_model <- function(data, covariates,
   }
 }
 
-fit_model <- function(data, covariates, adjacency_matrix = NULL){
+fit_group_model <- function(data, covariates, adjacency_matrix = NULL){
   # Create spatial index - this is simply the row number for each traffic link
   data$spatial.idx <- 1:nrow(data)
   
@@ -149,8 +130,9 @@ fit_model <- function(data, covariates, adjacency_matrix = NULL){
     adjacency_matrix <- build_adjacency_matrix(data) 
   }
   
-  formula_base <- aadt ~ f(spatial.idx, model = "besag", graph = adjacency_matrix, 
-      adjust.for.con.comp = FALSE, scale.model = FALSE, constr = TRUE) +
+  formula_base <- aadt ~ f(spatial.idx, model = "besagproper", 
+                           graph = adjacency_matrix, 
+      adjust.for.con.comp = FALSE, constr = TRUE) +
     f(roadSystem, model="iid")
   
   covariate_string <- paste(covariates, collapse = " + ")
@@ -169,55 +151,78 @@ fit_model <- function(data, covariates, adjacency_matrix = NULL){
     )
 }
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Post-processing functions ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-calculate_group_diagnostics <- function(model, balanced_results, group_data, aadt2024) {
-  # Calculate INLA approval rates
-  # Calculate balanced approval rates  
-  # Return comparison table and detailed results
-}
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Visualization functions ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-create_group_map <- function(group_data, model_results, balanced_results, group_name) {
-  # Prepare spatial data with predictions
-  # Create leaflet map
-  # Return map object
-}
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Results management functions ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-combine_group_results <- function(all_group_results) {
-  # Combine balanced predictions from all groups
-  # Create national dataset with all predictions
-  # Return combined results
-}
-
-save_group_results <- function(group_results, group_name, output_dir) {
-  # Save model objects, predictions, diagnostics
-  # Organized by group
-}
-
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Balance predictions ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NULL, 
+balance_predictions <- function(data, nodes, balancing_grouping_variable, 
+                                balance_i_intersections){
+  # Here we need to assign the balancing groups. 
+  # When joining the balancing groups to the data, this will create duplicates.
+  
+  # "balancing_grouping_variable" can be either a column name (then no duplicates)
+  # or a data frame with the group mapping. In the latter case, the cluster id column will be "cluster_id".
+  if(is.data.frame(balancing_grouping_variable)){
+    data <- dplyr::full_join(data, balancing_grouping_variable, 
+                                       by = join_by("id"))
+    balancing_grouping_variable <- "cluster_id"
+  }
+  
+  groups <- sort(unique(data[[balancing_grouping_variable]]))
+  
+  
+  # Initialize result list
+  group_data_list <- list()
+  group_diagnostics <- list()
+  
+  cat("Balancing predictions for all groups... --------------\n")
+  # Loop through groups calling fit_and_balance_for_group()
+  for(group in groups){
+    cat("  Balancing predictions for group: ", group, "\n")
+    group_data <- extract_group_data(data, group, balancing_grouping_variable)
+    
+    balanced_group_results <- balance_group_predictions(
+      data = group_data, 
+      nodes = nodes, 
+      pred = group_data$pred, 
+      sd = group_data$sd,
+      balance_i_intersections = balance_i_intersections)
+    
+    group_data$balanced_pred <- balanced_group_results$results$balanced_pred
+    group_data$balanced_sd <- balanced_group_results$results$balanced_sd
+    group_data_list[[group]] <- dplyr::select(group_data, id, 
+                                              balanced_pred, balanced_sd)
+    
+    group_diagnostics[[group]] <- list(
+      diagnostics = balanced_group_results$diagnostics,
+      incidence_matrix = balanced_group_results$matrices$A1)
+  }
+  
+
+  # Combine results across all groups
+  predictions <- dplyr::bind_rows(group_data_list, .id = "grouping") %>% 
+    group_by(id) %>% # Here we need to handle the possible duplicates.
+    summarise(n_duplicates = n(), # Number of duplicates
+              balanced_pred = mean(balanced_pred), # prediction is average of predictions
+              balanced_sd = 1/n_duplicates*(sqrt(sum(balanced_sd^2))) # sd is 1/n_dup*sqrt(sum(sd^2))
+              )
+  
+  
+  return(list(balanced_res = predictions, 
+              diagnostics = group_diagnostics))
+}
+
+balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NULL, 
                                 constraint_matrix = NULL,
                                 colname_aadt = "aadt", colname_sd = "aadt_sd", 
                                 lambda = 1e-10, balance_i_intersections){
   start_time <- Sys.time()
+  one_node_flag <- FALSE   # Flagging if a group has only one node
+  
   # Step 0: Set up data and constraint matrices
   # Flow constraints
-  cat("  Building constraint matrix...\n")
+  cat("    Building constraint matrix...\n")
   if(is.null(constraint_matrix)){
     A1 <- build_incidence_matrix(nodes, data, 
                                  balance_i_intersections = balance_i_intersections)
@@ -228,11 +233,21 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   n_p <- sum(!is.na(data[[colname_aadt]])) # No. of AADT values
   n_e <- nrow(data) # No. of traffic links (edges)
   n_n <- nrow(A1) # No. of traffic nodes (with entering and exiting traffic)
+  if(is.null(n_n)){ # This happens if there is only one row/node
+    n_n <- 1
+    one_node_flag <- TRUE
+  }
   
-  cat("  Building measurement matrix...\n")
+  cat("    Building measurement matrix...\n")
   A2 <- as.matrix(build_measurement_matrix(data, colname_aadt = colname_aadt))
   d <- na.omit(data[[colname_aadt]])
-  Sigma_epsilon_mark <- diag(na.omit(data[[colname_sd]])^2)
+  Sigma_epsilon_mark <- diag(x = na.omit(data[[colname_sd]])^2)
+  
+  # Check if there is only one data entry (this messes with the diag-function)
+  if(n_p == 1){
+    Sigma_epsilon_mark <- matrix(na.omit(data[[colname_sd]])^2, nrow = 1, ncol = 1)
+  }
+  
   
   if(!is.null(model)){
     mu_v <- round(model$summary.fitted.values[, "0.5quant"])
@@ -257,10 +272,13 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   
   # Step 2: Convert to dense matrices
   A1 <- as.matrix(A1)
+  if(one_node_flag){ # If only one node the matrix will be wrong
+    A1 <- t(A1)
+  }
   A2 <- as.matrix(A2)
   A <- rbind(A1, A2)
   
-  cat("  Creating Sigma_vb...\n")
+  cat("    Creating Sigma_vb...\n")
   Sigma_vb <- Sigma_v %*% t(A)
   
   
@@ -271,11 +289,13 @@ balance_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NUL
   rank_deficit <- nrow(A) - rank_A
   
   # Step 4: Build covariance matrix
-  Sigma_epsilon <- as.matrix(Matrix::bdiag(list(diag(rep(0, n_n)), Sigma_epsilon_mark)))
+  Sigma_epsilon <- as.matrix(Matrix::bdiag(list(
+    matrix(0, nrow = n_n, ncol = n_n), 
+    Sigma_epsilon_mark)))
   Sigma_b <- A %*% Sigma_v %*% t(A) + Sigma_epsilon
   Sigma_b <- (Sigma_b + t(Sigma_b))/2  # Ensure symmetry
   
-  cat("  Inverting Sigma_b...\n")
+  cat("    Inverting Sigma_b...\n")
   # Step 5: Robust inversion
   if (rank_deficit > 0) {
     # Use pseudoinverse for rank-deficient systems
@@ -758,7 +778,7 @@ determine_flow_type <- function(incoming_links, outgoing_links) {
 
 #' Build measurement matrix
 #'
-#' @param data Data frame containing the row "prelimAadt"
+#' @param data Data frame containing the row "aadt"
 #'
 #' @returns A matrix with each row corresponding to a traffic link with a measured traffic volume, and columns corresponding to all traffic links. For each row, the entry corresponding to the given traffic link has value 1.
 #' @export
@@ -779,4 +799,43 @@ build_measurement_matrix <- function(data, colname_aadt = "aadt") {
   return(A_2)
 }
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Balancing clusters ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Post-processing functions ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+calculate_group_diagnostics <- function(model, balanced_results, group_data, aadt2024) {
+  # Calculate INLA approval rates
+  # Calculate balanced approval rates  
+  # Return comparison table and detailed results
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Visualization functions ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+create_group_map <- function(group_data, model_results, balanced_results, group_name) {
+  # Prepare spatial data with predictions
+  # Create leaflet map
+  # Return map object
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Results management functions ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+combine_group_results <- function(all_group_results) {
+  # Combine balanced predictions from all groups
+  # Create national dataset with all predictions
+  # Return combined results
+}
+
+save_group_results <- function(group_results, group_name, output_dir) {
+  # Save model objects, predictions, diagnostics
+  # Organized by group
+}
