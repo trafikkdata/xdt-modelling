@@ -14,10 +14,13 @@ source_python("python/balancing/cluster_on_prelim_aadt.py")
 # Load data and matrices ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-data <- readRDS("data/processed/preprocessed_data.rds")
+data <- readRDS("data/processed/engineered_data.rds")
 geojson_nodes <- fromJSON("data/raw/traffic-nodes-2024.geojson", simplifyVector = FALSE)
 
 data$prelimAadt <- data$aadt
+
+
+# First approach ---------------------------------------------------------------
 
 # Run Python via R + reticulate
 cluster_data <- add_cluster_id_to_df(df = data, geojson_data = geojson_nodes)
@@ -74,9 +77,9 @@ leaflet::leaflet(subset_lenke, options = leaflet::leafletOptions(crs = nvdb$nvdb
 
 # New approach -----------------------------------------------------------------
 # Run the clustering
-cluster_mapping <- cluster_road_network(data)
+clustered <- cluster_road_network(data)
 
-cluster_mapping <- final_assignments
+#cluster_mapping <- final_assignments
 # Merge with your original data
 data_with_clusters <- data %>% left_join(cluster_mapping, by = "id")
 
@@ -84,7 +87,7 @@ data_with_clusters <- data %>% left_join(cluster_mapping, by = "id")
 print(paste("Missing cluster assignments:", sum(is.na(data_with_clusters$cluster_id))))
 print(paste("Duplicate assignments:", sum(duplicated(cluster_mapping$id))))
 
-telemark_clusters <- data_with_clusters %>% filter(county == "Trøndelag") %>% add_geometry_to_traffic_links()
+telemark_clusters <- data_with_clusters %>% dplyr::filter(county == "Telemark") %>% add_geometry_to_traffic_links()
 
 nvdb <- nvdb_objects()
 pal <- leaflet::colorBin(
@@ -100,6 +103,8 @@ leaflet::leaflet(telemark_clusters,
     color = ~ pal(telemark_clusters[["cluster_id"]]),
     opacity = 1)
 
+
+
 # Looking at results from Johannes ----
 clustered <- read.csv("../../directed-traffic-links-2024-clustered.csv")
 clustered_simple <- read.csv("../../directed-traffic-links-2024-clustered-simple.csv")
@@ -108,11 +113,67 @@ clustered_simple <- read.csv("../../directed-traffic-links-2024-clustered-simple
 (number_of_groups <- clustered$cluster_id %>% unique() %>% length())
 (traffic_links_per_group <- length(unique(clustered$id))/number_of_groups)
 (number_of_groups_per_traffic_link <- clustered %>% group_by(id) %>% count() %>% arrange(desc(n)))
+(number_of_traffic_links_per_group <- clustered %>% group_by(cluster_id) %>% count() %>% arrange(desc(n)))
 
 
 
 (number_of_groups <- clustered_simple$cluster_id %>% unique() %>% length())
 (traffic_links_per_group <- length(unique(clustered_simple$id))/number_of_groups)
 (number_of_groups_per_traffic_link <- clustered_simple %>% group_by(id) %>% count() %>% arrange(desc(n)))
+(number_of_traffic_links_per_group <- clustered_simple %>% group_by(cluster_id) %>% count() %>% arrange(desc(n)))
 
 
+one_cluster <- clustered %>% filter(cluster_id == 113) %>% add_geometry_to_traffic_links()
+
+nvdb <- nvdb_objects()
+leaflet::leaflet(one_cluster, 
+                 options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
+  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
+  leaflet::addPolylines(
+    opacity = 1)
+
+hist(number_of_traffic_links_per_group)
+
+# Cluster 113 has no measured links
+filter(clustered, cluster_id == 113)
+
+# Do all clusters have data?
+no_data_clusters <- clustered %>% group_by(cluster_id) %>% summarise(num_links_with_data = sum(!is.na(prelimAadt))) %>% arrange(num_links_with_data)
+
+# No, this many clusters are missing data:
+filter(no_data_clusters, num_links_with_data == 0) %>% nrow()
+
+
+# Select traffic links that have only one group
+traffic_links_with_one_group <- filter(number_of_groups_per_traffic_link, n == 1) %>% select(id)
+
+groups <- clustered %>% filter(id %in% traffic_links_with_one_group$id) %>% add_geometry_to_traffic_links()
+
+leaflet::leaflet(groups, 
+                 options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
+  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
+  leaflet::addPolylines(
+    color = ~ pal(groups$cluster_id),
+    opacity = 1)
+
+
+# Another option ---------------------------------------------------------------
+
+undirected_traffic_links <- jsonlite::fromJSON("data/raw/traffic-links-2025.json")
+parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% summarise(parent_link_has_data = any(!is.na(aadt)))
+
+undirected_traffic_links <- full_join(undirected_traffic_links, parent_links_with_data, by = join_by(id == parentTrafficLinkId))
+
+sample <- undirected_traffic_links %>% dplyr::select(id, startTrafficNodeId, endTrafficNodeId, parent_link_has_data) %>% head(20)
+
+
+source("R/balancing_clusters.R")
+
+clustered <- strategic_network_clustering(undirected_traffic_links)
+  
+  
+  
+  
+  
+  
+  
