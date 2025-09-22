@@ -11,7 +11,7 @@ xdt-modelling/
 │   ├── data_preprocessing.R       # Data preprocessing
 │   ├── exploratory_analysis.R     # Functions for exploring and plotting the data
 │   ├── feature_engineering.R      # Creating new variables, scaling, etc.
-│   ├── model_training.R           # Model fitting functions
+│   ├── model_fitting.R            # Model fitting functions
 │   ├── model_validation.R         # Cross-validation, model selection, performance metrics
 |   ├── visualization.R            # Plotting functions
 │   └── utilities.R                # Helper functions, data type conversions
