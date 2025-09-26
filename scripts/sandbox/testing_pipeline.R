@@ -52,7 +52,7 @@ national_res <- fit_national_model(
 # Test "run_modeling_pipeline" function for one county ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-res <- run_modeling_pipeline(inla_groups_to_process = c("Buskerud"), 
+res <- run_modeling_pipeline(inla_groups_to_process = c("Trøndelag"), 
                              inla_grouping_variable = "county")
 
 
@@ -62,7 +62,7 @@ retta <- res$data %>%
   mutate(text = paste0("INLA: ", pred, 
                        "<br>Balanced: ", balanced_pred,
                        #"<br>ÅDT 2023: ", ÅDT.fjorårets,
-                       "<br>Målt eller utleda ÅDT: ", aadt,
+                       "<br>Measured: ", aadt,
                        "<br>ID: ", id))
 nvdb <- nvdb_objects()
 
@@ -81,6 +81,22 @@ leaflet::leaflet(retta,
     popup = ~ text,
     opacity = 1) |>
   leaflet::addLegend("bottomright", pal = pal, values = ~ balanced_pred, title = "ÅDT", opacity = 1)
+
+
+pal <- leaflet::colorNumeric(
+  palette = "viridis",
+  reverse = TRUE,
+  na.color = "#88807b",
+  domain = retta$aadt
+)
+leaflet::leaflet(retta, 
+                 options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
+  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
+  leaflet::addPolylines(
+    color = ~ pal(aadt),
+    popup = ~ text,
+    opacity = 1) |>
+  leaflet::addLegend("bottomright", pal = pal, values = ~ aadt, title = "ÅDT", opacity = 1)
 
 
 
