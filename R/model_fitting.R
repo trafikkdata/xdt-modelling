@@ -13,13 +13,16 @@ run_modeling_pipeline <- function(
     #inla_scope = "local",  # "local" or "national"
     balance_predictions = TRUE,
     balance_i_intersections = FALSE,
-    generate_plots = TRUE
+    generate_plots = TRUE,
+    model_name = "model"
 ) {
+  
+  config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
   
   if(is.null(data)){
     data <- readRDS("data/processed/engineered_data.rds")
   }
-  #aadt2024 <- load_data(config$data_paths$raw$aadt_results)
+  aadt2024 <- load_data(config$data_paths$raw$aadt_results)
   nodes <- sf::read_sf("data/raw/traffic-nodes-2024.geojson")
   
   # Filter out groups to process
@@ -56,6 +59,12 @@ run_modeling_pipeline <- function(
   diagnostics$balancing_diagnostics <- balanced_predictions$diagnostics
   
   cat("Predictions successfully balanced.\n")
+  
+  
+  diagnostics$approval <- calculate_approved(data = data,
+                                             data_manual = aadt2024,
+                                             model_name = model_name)
+  
   # Return comprehensive results
   return(list(data = data, 
               diagnostics = diagnostics))
