@@ -11,6 +11,11 @@ add_geometry_to_traffic_links <- function(df, id_name = "id", directed = TRUE){
   # Input: dataframe with id column.
   # Output: the same data frame, now with geometry column. 
   
+  # If id does not contain "with" or "against", rename it to parentTrafficLinkId
+  if(!grepl("(WITH|AGAINST)$", df[1, id_name])){
+    directed <- FALSE
+  }
+  
   geom <- readRDS("data/processed/traffic_link_geometries.rds")
   
   id_name_geom <- ifelse(directed, "id", "parentTrafficLinkId")
