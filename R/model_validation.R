@@ -16,8 +16,14 @@ calculate_approved <- function(
     sd <- round(model$summary.fitted.values[, "sd"])
   }
   if(is.null(model) & is.null(pred) & is.null(sd)){
-    pred <- data$balanced_pred
-    sd <- data$balanced_sd
+    if("balanced_pred" %in% colnames(data)){
+      pred <- data$balanced_pred
+      sd <- data$balanced_sd
+    }else{
+      pred <- data$pred
+      sd <- data$sd
+    }
+    
   }
   
   # Extract predictions
@@ -67,11 +73,11 @@ calculate_approved <- function(
                          andel_km = andel_km,
                          dekningsandel = dekningsandel)
   
-  colnames(data)[which(colnames(data) == "pred")] <- paste0(model_name, "_pred")
-  colnames(data)[which(colnames(data) == "sd")] <- paste0(model_name, "_sd")
+  #colnames(data)[which(colnames(data) == "pred")] <- paste0(model_name, "_pred")
+  #colnames(data)[which(colnames(data) == "sd")] <- paste0(model_name, "_sd")
   
-  colnames(uretta_med_manuell)[which(colnames(uretta_med_manuell) == "pred")] <- paste0(model_name, "_pred")
-  colnames(uretta_med_manuell)[which(colnames(uretta_med_manuell) == "sd")] <- paste0(model_name, "_sd")
+  #colnames(uretta_med_manuell)[which(colnames(uretta_med_manuell) == "pred")] <- paste0(model_name, "_pred")
+  #colnames(uretta_med_manuell)[which(colnames(uretta_med_manuell) == "sd")] <- paste0(model_name, "_sd")
   
   
   return(list(approved = approved, retta = data, uretta = uretta_med_manuell))
@@ -286,4 +292,15 @@ print_turning_movements_for_link_at_node <- function(node_id, link_id, nodes){
     cat("Legal turning movements for traffic link", link_id, "at traffic node", node_id, ": \n")
     print(turns_df[turns_df[,1] == link_id, 2][[1]])
   }
+}
+
+print_turning_movements_for_link <- function(link_id, data, nodes){
+  #link_id <- "0.0-1.0@1886128-WITH"
+  link_data <- dplyr::filter(data, id == link_id)
+  start_node <- link_data$startTrafficNodeId
+  end_node <- link_data$endTrafficNodeId
+  
+  print_turning_movements_for_link_at_node(node_id = end_node, link_id = link_id, nodes = nodes)
+  
+  
 }
