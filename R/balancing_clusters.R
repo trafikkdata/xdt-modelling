@@ -2,29 +2,34 @@ library(igraph)
 library(dplyr)
 
 strategic_network_clustering <- function(data, target_clusters = 100, min_network_distance = 5) {
-  if(!("id" %in% colnames(data))){
-    data$id <- data$parentTrafficLinkId
-  }
+  undirected <- data %>% distinct(parentTrafficLinkId, .keep_all = TRUE) %>% 
+    dplyr::select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId)
+  
+  # Find parent traffic links where both children have data
+  parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% 
+    summarise(child_link_has_data = all(!is.na(aadt)))
+  
+  undirected <- dplyr::full_join(undirected, parent_links_with_data)
   
   cat("Building link adjacency graph (links as vertices)...\n")
   
   # Step 1: Build graph where traffic links are vertices
   # Two links are connected if they share a traffic node
   
-  n_missing_nodes <- sum(is.na(data$startTrafficNodeId))
+  n_missing_nodes <- sum(is.na(undirected$startTrafficNodeId))
   if(n_missing_nodes > 0){
     warning(paste("There are", n_missing_nodes, "traffic links that are missing nodes.\n"))
-    data <- data %>% drop_na()
+    undirected <- undirected %>% drop_na()
   }
   
   # Create a mapping of traffic nodes to the links that connect to them
-  node_to_links <- data %>%
-    select(id, startTrafficNodeId, endTrafficNodeId) %>%
+  node_to_links <- undirected %>%
+    select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId) %>%
     # Reshape to long format: each row is a (node, link) pair
-    pivot_longer(cols = c(startTrafficNodeId, endTrafficNodeId), 
+    tidyr::pivot_longer(cols = c(startTrafficNodeId, endTrafficNodeId), 
                  names_to = "endpoint", 
                  values_to = "traffic_node") %>%
-    select(traffic_node, link_id = id) %>% 
+    dplyr::select(traffic_node, link_id = parentTrafficLinkId) %>% 
     tidyr::drop_na()
   
   # Find pairs of links that share traffic nodes
@@ -38,19 +43,19 @@ strategic_network_clustering <- function(data, target_clusters = 100, min_networ
   
   link_connections <- node_to_links %>%
     # Self-join on traffic_node to find all links meeting at same node
-    inner_join(node_to_links, by = "traffic_node", relationship = "many-to-many") %>%
+    dplyr::inner_join(node_to_links, by = "traffic_node", relationship = "many-to-many") %>%
     # Don't connect link to itself
-    filter(link_id.x != link_id.y) %>%
+    dplyr::filter(link_id.x != link_id.y) %>%
     # Keep one direction only for undirected graph
-    mutate(link_pair = pmap_chr(list(link_id.x, link_id.y), ~paste(sort(c(...)), collapse = "-"))) %>%
-    distinct(link_pair, .keep_all = TRUE) %>%
-    select(from = link_id.x, to = link_id.y)
+    dplyr::mutate(link_pair = purrr::pmap_chr(list(link_id.x, link_id.y), ~paste(sort(c(...)), collapse = "-"))) %>%
+    dplyr::distinct(link_pair, .keep_all = TRUE) %>%
+    dplyr::select(from = link_id.x, to = link_id.y)
   
   
   # Build undirected graph with links as vertices
-  network_graph <- graph_from_data_frame(
+  network_graph <- igraph::graph_from_data_frame(
     link_connections, 
-    vertices = data.frame(name = data$id),
+    vertices = data.frame(name = undirected$parentTrafficLinkId),
     directed = FALSE
   )
   
@@ -58,19 +63,19 @@ strategic_network_clustering <- function(data, target_clusters = 100, min_networ
             ecount(network_graph), "connections\n"))
   
   # Step 2: Strategic sampling of measurement points
-  measurement_links <- data$id[data$child_link_has_data == TRUE]
+  measurement_links <- undirected$parentTrafficLinkId[undirected$child_link_has_data == TRUE]
   cat(paste("Total measurement links:", length(measurement_links), "\n"))
   
   # Use network distance to thin out measurement points
-  selected_barriers <- strategic_sample_barriers(
-    network_graph, 
-    measurement_links, 
-    min_distance = min_network_distance,
-    target_count = target_clusters * 2  # Rough heuristic
-  )
+  # selected_barriers <- strategic_sample_barriers(
+  #   network_graph, 
+  #   measurement_links, 
+  #   min_distance = min_network_distance,
+  #   target_count = target_clusters * 2  # Rough heuristic
+  # )
   
   # OR: randomly sample measurement points
-  selected_barriers <- sample(measurement_links, size = 4000)
+  #selected_barriers <- sample(measurement_links, size = 4000)
   
   # OR: Use all measurement links
   selected_barriers <- measurement_links
@@ -119,7 +124,7 @@ strategic_network_clustering <- function(data, target_clusters = 100, min_networ
   )
   
   # Handle any unassigned links (isolated components, etc.)
-  unassigned_links <- setdiff(data$id, all_assignments$id)
+  unassigned_links <- setdiff(undirected$parentTrafficLinkId, all_assignments$id)
   if(length(unassigned_links) > 0) {
     cat(paste("Creating singleton clusters for", length(unassigned_links), "unassigned links\n"))
     
