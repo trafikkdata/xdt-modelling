@@ -326,7 +326,7 @@ print(result2$constraint_rows)
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 trondheim_data <- read_sf("data/processed/trondheim_data.geojson")
 
-A1 <- build_incidence_matrix(nodes = nodes, traffic_links = trondheim_data)
+A1 <- build_incidence_matrix(nodes = nodes, traffic_links = trondheim_data, nodes_to_balance = "all")
 
 examine_node_flow(A1, "3508236")
 
