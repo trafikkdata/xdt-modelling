@@ -121,3 +121,20 @@ get_traffic_links_in_bbox <- function(data, bbox = NULL, point = NULL){
   return(subset_data)
 }
 
+
+split_traffic_link_id <- function(df){
+  df_parsed <- df |>
+    tidyr::extract(
+      id,
+      into = c("startPosition", "endPosition"),
+      regex = "([^@-]+@?\\d*)-([^@-]+@\\d*)-.*",
+      remove = FALSE
+    ) %>%
+    dplyr::mutate(
+      startPosition = dplyr::if_else(
+        !grepl("@", startPosition),
+        paste0(startPosition, "@", sub(".*@", "", endPosition)),
+        startPosition)
+    )
+  return(df_parsed)
+}
