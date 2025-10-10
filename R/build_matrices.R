@@ -88,6 +88,7 @@ build_incidence_matrix <- function(nodes, traffic_links, nodes_to_balance){
     results <- process_turning_movements(turning_movements_json = turning_movements, 
                                          link_ids = traffic_link_ids, 
                                          node_id = node)
+    
     row_in_incidence_matrix <- results$constraint_rows
     A1 <- rbind(A1, row_in_incidence_matrix)
   }
@@ -223,6 +224,12 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
   # Create flow nodes by grouping movements
   flow_nodes <- create_flow_nodes(movements_df = movements_df, node_id = node_id)
   
+  # We need the total number of outgoing links for each flow node, for later comparison
+  node_ids <- sapply(flow_nodes, function(x) x$name)
+  outgoing_counts <- sapply(flow_nodes, function(x) length(x$outgoing_links))
+  names(outgoing_counts) <- node_ids
+  
+
   # Build constraint matrix rows
   n_flow <- length(flow_nodes)
   n_links <- length(link_ids)
@@ -254,6 +261,21 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
   }
   
   rownames(constraint_rows) <- flow_node_names
+  
+  
+  num_outgoing_rowsums <- rowSums(as.matrix(constraint_rows) == 1)
+  common_nodes <- intersect(names(outgoing_counts), names(num_outgoing_rowsums))
+  nodes_to_exclude <- common_nodes[
+    outgoing_counts[common_nodes] != num_outgoing_rowsums[common_nodes]]
+  
+  constraint_rows <- constraint_rows[!rownames(constraint_rows) %in% nodes_to_exclude, , drop = FALSE]
+  if(nrow(constraint_rows) == 0) {
+    return(list(
+      flow_nodes = character(0),
+      constraint_rows = matrix(nrow = 0, ncol = length(link_ids)),
+      movements_data = data.frame()
+    ))
+  }
   
   return(list(
     flow_nodes = flow_node_names,
