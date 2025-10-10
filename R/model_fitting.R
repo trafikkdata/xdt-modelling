@@ -175,9 +175,12 @@ balance_predictions <- function(data, nodes, balancing_grouping_variable,
   # When joining the balancing groups to the data, this will create duplicates.
   
   if(is.character(balancing_grouping_variable) &&
-     length(balancing_grouping_variable) == 1 &&
-     balancing_grouping_variable == "run_clustering"){
-    balancing_grouping_variable <- strategic_network_clustering(data)
+     length(balancing_grouping_variable) == 1){
+    if(balancing_grouping_variable == "run_clustering"){
+       balancing_grouping_variable <- strategic_network_clustering(data)
+     }else if(balancing_grouping_variable == "no_clustering"){
+       data$cluster_id <- 1
+       balancing_grouping_variable <- "cluster_id"}
   }
   # "balancing_grouping_variable" can be either a column name (then no duplicates)
   # or a data frame with the group mapping. In the latter case, the cluster id column will be "cluster_id".
@@ -221,15 +224,17 @@ balance_predictions <- function(data, nodes, balancing_grouping_variable,
   
   
   # Combine results across all groups
-  predictions <- dplyr::bind_rows(group_data_list, .id = "grouping") %>% 
+  predictions <- dplyr::bind_rows(group_data_list, .id = "grouping") 
+  predictions_by_link <- predictions %>% 
     group_by(id) %>% # Here we need to handle the possible duplicates.
     summarise(n_duplicates = n(), # Number of duplicates
               balanced_pred = mean(balanced_pred), # prediction is average of predictions
               balanced_sd = 1/n_duplicates*(sqrt(sum(balanced_sd^2))) # sd is 1/n_dup*sqrt(sum(sd^2))
     )
   
+  group_diagnostics$predictions_by_group <- predictions
   
-  return(list(balanced_res = predictions, 
+  return(list(balanced_res = predictions_by_link, 
               diagnostics = group_diagnostics))
 }
 
@@ -300,7 +305,8 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
   }else{
     A2 <- as.matrix(build_measurement_matrix(data, colname_aadt = colname_aadt))
     d <- na.omit(data[[colname_aadt]])
-    Sigma_epsilon_mark <- diag(as.vector(na.omit(data[[colname_sd]])^2), 
+    me_var_scaling <- 0.1
+    Sigma_epsilon_mark <- diag(as.vector(na.omit(data[[colname_sd]]*me_var_scaling)^2), 
                                nrow = length(na.omit(data[[colname_sd]])))
   }
   
@@ -313,8 +319,9 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
   
   # Step 1: Handle extreme variances
   if (max(diag(Sigma_v)) > 1e10 || kappa(Sigma_v) > 1e12) {
-    normal_vars <- min(diag(Sigma_v)[diag(Sigma_v) < 1e6], 1e10)
-    max_reasonable <- max(normal_vars) * 10
+    #normal_vars <- min(diag(Sigma_v)[diag(Sigma_v) < 1e6], 1e10)
+    #max_reasonable <- max(normal_vars) * 10
+    max_reasonable <- 1e10
     capped_count <- sum(diag(Sigma_v) > max_reasonable)
     diag(Sigma_v)[diag(Sigma_v) > max_reasonable] <- max_reasonable
     
@@ -385,7 +392,7 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
   result_data <- data %>% 
     mutate(inla_pred = mu_v, 
            inla_sd = marginal_sds,
-           balanced_pred = mu_v_given_b,
+           balanced_pred = as.vector(mu_v_given_b),
            balanced_sd = diag(Sigma_v_given_b))
   
   return(list(
