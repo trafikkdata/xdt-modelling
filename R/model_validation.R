@@ -245,7 +245,7 @@ examine_node_flow <- function(A1, node_id){
   rownames_contain_string <- which(grepl(node_id, rownames(A1)))
   node_rows <- A1[rownames_contain_string, ]
   
-  if(nrow(nonzero_cols) == 1){
+  if(nrow(A1) == 1){
     nonzero_cols <- node_rows[node_rows != 0, drop = FALSE]
   }
   nonzero_cols <- node_rows[, colSums(abs(node_rows) != 0) > 0, drop = FALSE]
@@ -303,4 +303,282 @@ print_turning_movements_for_link <- function(link_id, data, nodes){
   print_turning_movements_for_link_at_node(node_id = end_node, link_id = link_id, nodes = nodes)
   
   
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Autoapproval and validation functions ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Main validation function that aggregates directed predictions to undirected
+# segments and calculates approval rates and error metrics
+calculate_approval_metrics <- function(
+    model = NULL, 
+    pred = NULL, 
+    sd = NULL, 
+    data, 
+    data_manual, 
+    truth_col = "ÅDT.offisiell", 
+    model_name = "inla") {
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Extract predictions and uncertainties ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  if (!is.null(model)) {
+    pred <- round(model$summary.fitted.values[, "0.5quant"])
+    sd <- round(model$summary.fitted.values[, "sd"])
+  }
+  
+  if (is.null(model) & is.null(pred) & is.null(sd)) {
+    if ("balanced_pred" %in% colnames(data)) {
+      pred <- data$balanced_pred
+      sd <- data$balanced_sd
+    } else {
+      pred <- data$pred
+      sd <- data$sd
+    }
+  }
+  
+  # Add predictions to data
+  data$pred <- pred
+  data$sd <- sd
+  
+  # Ensure truth column is numeric
+  data_manual[[truth_col]] <- as.numeric(data_manual[[truth_col]])
+  
+  # Cap unreasonable standard deviations
+  data$sd[is.na(data$sd) | data$sd > 20000] <- 20000
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Aggregate to undirected segments ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  data_undirected <- data %>% 
+    dplyr::select(parentTrafficLinkId, pred, sd) %>%
+    dplyr::group_by(parentTrafficLinkId) %>% 
+    dplyr::summarise(
+      pred = sum(pred),
+      sd = calculate_sd_of_sum(sd)
+    )
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Join with manual estimates and calculate approval ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  combined_data <- data_manual %>% 
+    dplyr::full_join(data_undirected, by = dplyr::join_by(ID == parentTrafficLinkId)) %>% 
+    dplyr::mutate(!!truth_col := as.numeric(.data[[truth_col]])) %>% 
+    tidyr::drop_na(dplyr::all_of(c(truth_col, "pred"))) %>% 
+    dplyr::mutate(
+      pred_lower = pred - 1.96 * sd,
+      pred_upper = pred + 1.96 * sd,
+      approved = check_autoapproval(
+        truth = .data[[truth_col]], 
+        pred = pred, 
+        pred_lower = pred_lower,
+        pred_upper = pred_upper
+      )
+    )
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Filter to segments without traffic counters ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  segments_without_counters <- dplyr::filter(
+    combined_data, 
+    Datagrunnlag.TRP.ID == "null"
+  )
+  
+  approved_segments <- dplyr::filter(segments_without_counters, approved)
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Calculate approval rates ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  approval_rate_count <- nrow(approved_segments) / nrow(segments_without_counters)
+  approval_rate_length <- sum(approved_segments$Strekningslengde..m.) / 
+    sum(segments_without_counters$Strekningslengde..m.)
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Calculate coverage (calibration check) ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  segments_without_counters <- segments_without_counters %>%
+    dplyr::mutate(
+      truth_lower = .data[[truth_col]] - 1.96 * estimate_standard_error(.data[[truth_col]]),
+      truth_upper = .data[[truth_col]] + 1.96 * estimate_standard_error(.data[[truth_col]]),
+      covered = .data[[truth_col]] > pred_lower & .data[[truth_col]] < pred_upper,
+      eale = exp(abs(log(.data[[truth_col]]) - log(pred))) - 1,
+      eale_threshold = calculate_eale_threshold(pred),
+      approved_eale = eale < eale_threshold,
+      approved_lower_bound = pred_lower < truth_upper,
+      approved_upper_bound = pred_upper > truth_lower
+    )
+  
+  coverage_rate <- sum(segments_without_counters$covered) / nrow(segments_without_counters)
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Calculate failure mode breakdown ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  failure_modes <- segments_without_counters %>%
+    dplyr::mutate(
+      fail_eale = !approved_eale,
+      fail_lower = !approved_lower_bound,
+      fail_upper = !approved_upper_bound
+    ) %>%
+    dplyr::summarise(
+      pct_fail_eale = mean(fail_eale),
+      pct_fail_lower = mean(fail_lower),
+      pct_fail_upper = mean(fail_upper)
+    )
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Calculate eALE statistics ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  eale_stats <- segments_without_counters %>%
+    dplyr::summarise(
+      mean_eale = mean(eale),
+      median_eale = median(eale),
+      pct_eale_below_10 = mean(eale < 0.10),  # Very good predictions
+      pct_eale_below_20 = mean(eale < 0.20),  # Good predictions
+      pct_eale_above_50 = mean(eale > 0.50)   # Poor predictions
+    )
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Compile summary metrics ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  summary_metrics <- data.frame(
+    model = model_name,
+    approval_rate_count = approval_rate_count,
+    approval_rate_length = approval_rate_length,
+    coverage_rate = coverage_rate
+  ) %>%
+    dplyr::bind_cols(failure_modes) %>%
+    dplyr::bind_cols(eale_stats)
+  
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  # Return results ----
+  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  
+  return(list(
+    summary = summary_metrics,
+    directed_data = data,
+    undirected_data = combined_data,
+    segments_without_counters = segments_without_counters
+  ))
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Helper Functions ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Calculate standard deviation of sum assuming independence
+calculate_sd_of_sum <- function(sd) {
+  return(sqrt(sum(sd^2)))
+}
+
+# Check if a prediction meets all autoapproval criteria
+check_autoapproval <- function(truth, pred, pred_lower, pred_upper) {
+  
+  # Calculate eALE and check against threshold
+  threshold <- calculate_eale_threshold(pred)
+  eale <- exp(abs(log(truth) - log(pred))) - 1
+  approved_eale <- eale < threshold
+  
+  # Calculate truth confidence interval
+  truth_se <- estimate_standard_error(truth)
+  truth_lower <- truth - 1.96 * truth_se
+  truth_upper <- truth + 1.96 * truth_se
+  
+  # Check if confidence intervals overlap
+  approved_lower_bound <- pred_lower < truth_upper
+  approved_upper_bound <- pred_upper > truth_lower
+  
+  # All three criteria must be met
+  approved <- approved_eale & approved_lower_bound & approved_upper_bound
+  
+  return(approved)
+}
+
+# Calculate eALE threshold as function of predicted AADT
+calculate_eale_threshold <- function(pred_aadt) {
+  
+  # Pre-calculate sigmoid value at 1000
+  sigmoid_at_1000 <- 2 - (1.6 / (1 + exp(-0.01 * (1000 - 500))))
+  
+  # Calculate value at 10000
+  value_at_10000 <- sigmoid_at_1000 - 0.15 * ((10000 - 1000) / 9000)^0.5
+  
+  dplyr::case_when(
+    # Sigmoid: high threshold for low traffic, decreasing to ~40% at 1000
+    pred_aadt <= 1000  ~ 2 - (1.6 / (1 + exp(-0.01 * (pred_aadt - 500)))),
+    # Transition curve from 1000 to 10000, reaching ~25% at 10000
+    pred_aadt <= 10000 ~ sigmoid_at_1000 - 0.15 * ((pred_aadt - 1000) / 9000)^0.5,
+    # Decreasing from 10000 to 50000, reaching 20% at 50000
+    pred_aadt <= 50000 ~ value_at_10000 - 0.06 * ((pred_aadt - 10000) / 40000)^0.5,
+    # Constant 20% threshold for high traffic volumes
+    TRUE               ~ 0.20
+  )
+}
+
+# Estimate standard error for manual traffic estimates
+estimate_standard_error <- function(aadt) {
+  dplyr::case_when(
+    aadt < 500    ~ 40,
+    aadt < 1000   ~ 100,
+    aadt < 5000   ~ 200,
+    aadt < 10000  ~ 400,
+    aadt < 30000  ~ 1000,
+    TRUE          ~ 2000
+  )
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Segmented Analysis Functions ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Calculate approval rates by segment characteristics
+calculate_approval_by_segment <- function(validation_results, segment_by = "aadt_bin") {
+  
+  segments <- validation_results$segments_without_counters
+  
+  if (segment_by == "aadt_bin") {
+    segments <- segments %>%
+      dplyr::mutate(
+        segment_group = dplyr::case_when(
+          pred < 500    ~ "0-500",
+          pred < 1000   ~ "500-1000",
+          pred < 5000   ~ "1000-5000",
+          pred < 10000  ~ "5000-10000",
+          TRUE          ~ "10000+"
+        )
+      )
+  }
+  
+  segmented_results <- segments %>%
+    dplyr::group_by(segment_group) %>%
+    dplyr::summarise(
+      n_segments = dplyr::n(),
+      approval_rate = mean(approved),
+      mean_eale = mean(exp(abs(log(official_aadt) - log(pred))) - 1),
+      median_eale = median(exp(abs(log(official_aadt) - log(pred))) - 1),
+      coverage_rate = mean(covered)
+    )
+  
+  return(segmented_results)
+}
+
+get_approval_per_group <- function(df, group_name){
+  kommunenavn <- read.csv("data/raw/kommunenummer.csv", sep = ";") %>% select(kommunenummer, kommunenavn)
+  
+  approval_per_group <- df |>
+    group_by(.data[[group_name]]) |>
+    summarise(fraction_approved = sum(approved)/n(),
+              links_in_group = n()) %>% 
+    arrange(desc(fraction_approved)) %>% 
+    left_join(kommunenavn, by = join_by(Kommunenr == kommunenummer)) 
+  return(approval_per_group)
 }
