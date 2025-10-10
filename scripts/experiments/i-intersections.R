@@ -3,6 +3,8 @@
 library(sf)
 library(dplyr)
 library(INLA)
+library(tictoc)
+
 nvdb <- nvdb_objects()
 
 #config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
@@ -77,3 +79,61 @@ ende_noder <- dplyr::filter(nodes, numberOfIncomingLinks == 1 & numberOfOutgoing
 leaflet::leaflet(ende_noder, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
   leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
   leaflet::addCircleMarkers()
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Balancing or not balancing I-intersections ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+covariates <- c("functionalRoadClass:maxLanes",
+                "minLanes:roadCategory",
+                "functionalRoadClass",
+                "maxLanes",
+                "roadCategory")
+
+tic()
+balancing_all <- run_modeling_pipeline(
+  data = data,
+  balancing_grouping_variable = "run_clustering",
+  covariates = covariates,
+  nodes_to_balance = "all",
+  model_name = "all"
+)
+toc()
+
+tic()
+balancing_all_except_i_intersections <- run_modeling_pipeline(
+  data = data,
+  balancing_grouping_variable = "run_clustering",
+  covariates = covariates,
+  nodes_to_balance = "all_except_i_intersections",
+  model_name = "all_except_i_intersections"
+)
+toc()
+
+tic()
+balancing_complete_nodes <- run_modeling_pipeline(
+  data = data,
+  balancing_grouping_variable = "run_clustering",
+  covariates = covariates,
+  nodes_to_balance = "complete_nodes",
+  model_name = "complete_nodes"
+)
+toc()
+
+tic()
+no_balancing <- run_modeling_pipeline(
+  data = data,
+  covariates = covariates,
+  balance_predictions = FALSE,
+  model_name = "no_balancing"
+)
+toc()
+
+rbind(balancing_all$diagnostics$approval$approved,
+      balancing_all_except_i_intersections$diagnostics$approval$approved,
+      balancing_complete_nodes$diagnostics$approval$approved,
+      no_balancing$diagnostics$approval$approved)
+
+plot_directed_links(df = balancing_complete_nodes$data, county = "Trøndelag")

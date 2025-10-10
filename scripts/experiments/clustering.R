@@ -25,7 +25,7 @@ geojson_nodes <- fromJSON("data/raw/traffic-nodes-2024.geojson", simplifyVector 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
 # Results from Johannes ----
-clustered_johannes <- read.csv("../../directed-traffic-links-2024-clustered.csv")
+# clustered_johannes <- read.csv("../../directed-traffic-links-2024-clustered.csv")
 
 
 # Use "strategic_network_clustering", custom R function ----
@@ -56,7 +56,7 @@ saveRDS(data_w_clusters, "results/data_with_clusters.rds")
 (number_of_traffic_links_per_group <- clustered %>% group_by(cluster_id) %>% count() %>% arrange(desc(n)))
 
 
-one_cluster <- clustered %>% filter(cluster_id == 25) %>% add_geometry_to_traffic_links()
+one_cluster <- clustered %>% filter(cluster_id == 1) %>% add_geometry_to_traffic_links()
 
 nvdb <- nvdb_objects()
 leaflet::leaflet(one_cluster, 
