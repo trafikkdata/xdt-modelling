@@ -40,7 +40,7 @@ preprocessed_data <- preprocess_traffic_data(
   no_of_days = 366,
   stops_on_traffic_links_data = stops_on_traffic_links, 
   bus_counts_data = bus_counts
-  )
+)
 
 # Save the preprocessed data
 saveRDS(preprocessed_data, "data/processed/preprocessed_data.rds")
@@ -63,6 +63,13 @@ geometry_id <- directed_traffic_links_geojson %>%
 
 saveRDS(geometry_id, "data/processed/traffic_link_geometries.rds")
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Generate data with only id and road placement ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+roadPlacementsId <- directed_traffic_links_json %>% 
+  dplyr::select(id, roadPlacements)
+
+saveRDS(roadPlacementsId, "data/processed/traffic_link_roadPlacements.rds")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Create adjacency and constraint matrix ----
