@@ -3,41 +3,34 @@
 # Verifying that the balancing works within the clusters as well as without the 
 # clusters.
 # The balancing is too computationally intensive to be run on all of Norway in 
-# one, but it can be run on a larger sub-area. In this demonstration I use 
-# Trøndelag. I run the model for all of Trondelag in one, and for all of 
+# one, but it can be run on a smaller sub-area. In this demonstration we use 
+# Trøndelag. We run the model for all of Trondelag in one, and for all of 
 # Trøndelag in clusters, and compare the results.
 
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
 
+# Load packages
 library(sf)
 library(dplyr)
 
-config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
-
-source("R/utilities.R")
-source("R/model_fitting.R")
-source("R/build_matrices.R")
-source("R/balancing_clusters.R")
-source("R/model_validation.R")
-source("R/visualization.R")
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Load data and matrices ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-
+# Data
 data <- readRDS("data/processed/engineered_data.rds")
-aadt2024 <- load_data(config$data_paths$raw$aadt_results)
+aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Run models with and without clusters ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+# Formula to be used
 covariates <- c("functionalRoadClass:maxLanes",
                 "minLanes:roadCategory",
                 "functionalRoadClass",
                 "maxLanes",
                 "roadCategory")
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Run models with and without clusters ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
 # Explicitly generating the clusters so we can examine them later
 clustered_trond <- strategic_network_clustering(data %>% filter(county == "Trøndelag"))
