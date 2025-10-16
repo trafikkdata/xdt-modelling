@@ -72,7 +72,8 @@ get_best_traffic_volume <- function(){
 
 flatten_df <- function(df){
   df_flattened <- df %>%
-    tidyr::unnest_wider(bestDataSourceAadt, names_sep = "_")
+    tidyr::unnest_wider(bestDataSourceAadt, names_sep = "_") %>% 
+    tidyr::unnest_wider(lastYearAadt, names_sep = "_")
   
   return(df_flattened)
 }
@@ -126,9 +127,9 @@ remove_list_columns <- function(df){
 standardize_data_types <- function(df){
   # Final type conversions
   numeric_cols <- c("bestDataSourceAadt_trafficVolumeValue", "length",
-                    'numberOfEstablishments', 'numberOfEmployees', 
-                    'urbanRatio', 'numberOfInhabitants', "lastYearAadt")
-  integer_cols <- c("yearAppliesTo", "bestDataSourceAadt_year")
+                    "lastYearAadt_trafficVolumeValue")
+  integer_cols <- c("yearAppliesTo", "bestDataSourceAadt_year",
+                    "lastYearAadt_year")
   factor_cols <- c('functionalRoadClass', 'functionClass',
                    'highestSpeedLimit', "lowestSpeedLimit", 
                    "municipalityIds", "countyIds",'roadCategory', 
@@ -292,7 +293,7 @@ round_and_check_aadt <- function(df){
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 check_raw_data <- function(raw_data){
-  cat("Checking column names... ")
+  cat("Checking column names... \n")
   column_names <- c("id", "parentTrafficLinkId", "isTrafficWithMetering", 
                     "functionalRoadClass", "functionClass", "highestSpeedLimit", 
                     "lowestSpeedLimit", "isNorwegianScenicRoute", 
@@ -300,20 +301,26 @@ check_raw_data <- function(raw_data){
                     "isInvalid", "yearAppliesTo", "startTrafficNodeId",
                     "endTrafficNodeId", "municipalityIds", "countyIds",
                     "roadSystemReferences", "roadCategory", "roadLinkIds", 
-                    "roadNodeIds", "length", "maxLanes", "minLanes", 
-                    "hasOnlyPublicTransportLanes", "urbanRatio", 
-                    "numberOfEstablishments", "numberOfEmployees", 
-                    "numberOfInhabitants", "associatedTrpIds", "lastYearAadt",
-                    "bestDataSourceAadt", "trafficVolumes")
-  if(all(colnames(raw_data) == column_names)){
+                    "roadNodeIds", "length", "roadPlacements", "maxLanes", "minLanes", 
+                    "hasOnlyPublicTransportLanes", "associatedTrpIds",
+                    "lastYearAadt", "bestDataSourceAadt", "trafficVolumes")
+  if(setequal(colnames(raw_data), column_names)){
     cat("All column names are as expected.")
-  }else{
-    warning("Unexpected column names.")
-    print(cbind("Expected column names" = column_names, 
-                "colnames(raw_data)" = colnames(raw_data)))
+    }else{
+      warning("Unexpected column names.")
+      unexpected <- setdiff(names(raw_data), column_names)
+      missing <- setdiff(column_names, names(raw_data))
+      
+      if (length(unexpected) > 0) {
+        cat("Columns in raw data that are not expected:\n")
+        print(unexpected)
+      }
+      
+      if (length(missing) > 0) {
+        cat("Expected columns not found in raw data:\n")
+        print(missing)
+      }
   }
-  
-  
 }
 
 
