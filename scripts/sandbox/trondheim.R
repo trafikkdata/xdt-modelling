@@ -4,12 +4,9 @@ library(sf)
 library(dplyr)
 library(INLA)
 
-config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
-
-source("R/utilities.R")
-source("R/model_fitting.R")
-source("R/model_validation.R")
-source("R/visualization.R")
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
 
 trondheim_data <- read_sf("data/processed/trondheim_data.geojson")
 aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")

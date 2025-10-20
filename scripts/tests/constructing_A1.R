@@ -58,7 +58,7 @@ res_test <- process_turning_movements(turning_movements_json = problem_node$lega
                                       node_id = "3889039")
 
 # What about the boundary case for clusters? 
-# The node that is "ouside" the cluster should not be balanced. 
+# The node that is "outside" the cluster should not be balanced. 
 
 clustered_trd <- strategic_network_clustering(st_drop_geometry(trondheim_data))
 cluster_16 <- trondheim_data %>% 

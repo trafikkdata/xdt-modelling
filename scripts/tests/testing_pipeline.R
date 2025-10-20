@@ -15,6 +15,9 @@ source("R/visualization.R")
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 # Load data and matrices ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+data_new <- jsonlite::fromJSON("data/raw/directed-traffic-links-2024_new.json")
+data_old <- jsonlite::fromJSON("data/raw/directed-traffic-links-2024.json")
+
 
 data <- readRDS("data/processed/engineered_data.rds")
 aadt2024 <- load_data(config$data_paths$raw$aadt_results)
@@ -90,70 +93,31 @@ leaflet::leaflet(retta,
   leaflet::addLegend("bottomright", pal = pal, values = ~ aadt, title = "ÅDT", opacity = 1)
 
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Running the INLA model separately vs jointly for all of Norway ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-
-separate_model <- run_modeling_pipeline(groups_to_process = "all", 
-                                        inla_scope = "local",
-                                        covariates = good_formula_merged,
-                                        balance_predictions = FALSE)
-joint_model <- run_modeling_pipeline(groups_to_process = "all", 
-                                     inla_scope = "national",
-                                     covariates = good_formula_merged,
-                                     balance_predictions = FALSE)
-
-separate <- calculate_approved(data = separate_model$data,
-                                      pred = separate_model$data$pred,
-                                      sd = separate_model$data$sd,
-                                      data_manual = aadt2024,
-                                      model_name = "separate")
-joint <- calculate_approved(data = joint_model$data,
-                                        pred = joint_model$data$pred,
-                                        sd = joint_model$data$sd,
-                                        data_manual = aadt2024,
-                                        model_name = "joint")
-rbind(separate$approved, joint$approved)
-
-
-
-
-covariates <- c("functionalRoadClass:maxLanes",
-                "minLanes:roadCategory",
-                "functionalRoadClass",
-                "maxLanes",
-                "roadCategory")
-
-joint_model <- run_modeling_pipeline(inla_groups_to_process = "all", 
-                                     covariates = covariates,
-                                     balance_predictions = FALSE)
-
-joint <- calculate_approved(data = joint_model$data,
-                            pred = joint_model$data$pred,
-                            sd = joint_model$data$sd,
-                            data_manual = aadt2024,
-                            model_name = "joint")
-
-joint$approved
-
-
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 # Data for Merijn ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
+results <- readRDS("results/unbalanced_i_intersections.rds")
+road_placements <- readRDS("data/processed/traffic_link_roadPlacements.rds")
 
-df <- no_balancing$data %>% 
+df <- results$data %>% 
   split_traffic_link_id() %>% 
   dplyr::select(id, parentTrafficLinkId, 
                 startPosition, endPosition, 
                 isTrafficWithMetering, 
                 registeredAadt = aadt, registeredSd = aadt_sd, 
-                pred, sd)
+                startTrafficNodeId, endTrafficNodeId,
+                pred, sd) %>% 
+  full_join(road_placements)
+  
 
-write.csv(df, "data/processed/predictions_for_merijn.csv", row.names = FALSE)
 
+# write.csv(df, "data/processed/predictions_for_merijn.csv", row.names = FALSE)
 
+json_df <- jsonlite::toJSON(df)
+write(json_df, "data/processed/predictions_for_merijn.json")
 
+test <- jsonlite::fromJSON("data/processed/predictions_for_merijn.json")
 
 
