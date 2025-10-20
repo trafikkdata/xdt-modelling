@@ -55,6 +55,28 @@ trondelag_in_one <- run_modeling_pipeline(
 )
 
 # In principle, these two calls should produce roughly identical predictions.
+kommunenavn <- read.csv("data/raw/kommunenummer.csv", sep = ";") %>% 
+  mutate(kommunenummer = as.character(kommunenummer))
+
+trondelag_comparison <- data.frame(
+  id = trondelag_cluster$data$id,
+  municipalityIds = trondelag_cluster$data$municipalityIds,
+  pred.cluster = trondelag_cluster$data$balanced_pred, 
+  pred.in_one = trondelag_in_one$data$balanced_pred) %>% 
+  mutate(difference = abs(pred.cluster - pred.in_one),
+         ale = abs(log(pred.cluster) - log(pred.in_one)),
+         municipalityIds = as.character(municipalityIds)) %>% 
+  left_join(kommunenavn, join_by(municipalityIds == kommunenummer))
+
+
+ggplot(trondelag_comparison, aes(x = pred.in_one, y = pred.cluster)) +
+  geom_point()
+
+diff_per_county <- trondelag_comparison %>% group_by(kommunenavn) %>% 
+  summarise(avg_diff = mean(difference), # Average absolute difference
+            n = n(),
+            percent_diff = sum(difference != 0)/n) # Percent of TLs that are different
+
 
 # Total approval rates
 rbind(trondelag_cluster$diagnostics$approval$approved,
@@ -64,7 +86,7 @@ rbind(trondelag_cluster$diagnostics$approval$approved,
 plot_directed_links(trondelag_cluster$data)
 plot_directed_links(trondelag_in_one$data)
 
-# Aproval aggregated by municipality
+# Approval aggregated by municipality
 approved_trondelag_cluster <- get_approval_per_group(trondelag_cluster$diagnostics$approval$uretta, "Kommunenr")
 approved_trondelag_in_one <- get_approval_per_group(trondelag_in_one$diagnostics$approval$uretta, "Kommunenr")
 approved_trondelag <- full_join(approved_trondelag_cluster, 
@@ -82,4 +104,24 @@ tydal_in_one <- trondelag_in_one$data %>% filter(municipalityIds == 5033)
 problem_link <- "0.76569104@72834-0.48386792@72309-AGAINST"
 prob_data <- filter(trondelag_cluster$data, id == problem_link)
 
+
+# Look at A1 for problem link in cluster 149
+cluster149 <- clustered_trond %>% filter(cluster_id == 149)
+
+cluster149_data <- filter(trondelag_cluster$data, parentTrafficLinkId %in% cluster149$id)
+
+A1 <- build_incidence_matrix(
+  nodes = nodes, 
+  traffic_links = cluster149_data, 
+  nodes_to_balance = "complete_nodes")
+
+plot_directed_links(cluster149_data)
+
+# Look at A1 for problem link in cluster 269
+cluster269 <- clustered_trond %>% filter(cluster_id == 269)
+
+cluster269_data <- filter(trondelag_cluster$data, parentTrafficLinkId %in% cluster269$id)
+
+
+plot_directed_links(cluster269_data)
 

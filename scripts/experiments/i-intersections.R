@@ -1,19 +1,35 @@
 # I-intersections
 
+# In this script we do two things:
+# 1. Evaluate the number of intersections with different properties
+#   - Two undirected traffic links
+#   - Two incoming and outgoing directed traffic links
+#   - More candidate links than traffic links
+#   and different combinations of these.
+# 2. Balance predictions with different sets of intersections for which to 
+#   balance/not balance.
+
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
+
+# Load packages
 library(sf)
 library(dplyr)
-library(INLA)
 library(tictoc)
+
+# Data
+data <- readRDS("data/processed/engineered_data.rds")
+aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
+nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 
 nvdb <- nvdb_objects()
 
-#config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
-
-source("R/utilities.R")
-source("R/model_fitting.R")
 
 
-nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Identify number of nodes with different properties ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
 nodes$number_of_traffic_links <- lengths(nodes$connectedTrafficLinkIds)
 nodes$number_of_candidate_links <- lengths(nodes$connectedTrafficLinkCandidateIds)
@@ -66,19 +82,9 @@ leaflet::leaflet(used_all_candidates, options = leaflet::leafletOptions(crs = nv
   leaflet::addCircleMarkers()
 
 
-
 nrow(generalised_i_intersections)/nrow(nodes)*100
 
 nrow(used_all_candidates)/nrow(nodes)*100
-
-
-
-# Ende-noder (en retta lenke inn og en retta lenke ut)
-ende_noder <- dplyr::filter(nodes, numberOfIncomingLinks == 1 & numberOfOutgoingLinks == 1)
-
-leaflet::leaflet(ende_noder, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
-  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
-  leaflet::addCircleMarkers()
 
 
 

@@ -1,8 +1,23 @@
+# Periodic uncertainty
+
+# Many of the periodic AADT-numbers have uncertainty zero. I don't think that 
+# is intended.
+
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
+
+# Load packages
 library(dplyr)
 library(ggplot2)
 
-
+# Data
 data <- readRDS("data/processed/engineered_data.rds")
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Examining the uncertainty of periodic registrations ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
 periodic <- filter(data, bestDataSourceAadt_registrationFrequency == "PERIODIC")
 

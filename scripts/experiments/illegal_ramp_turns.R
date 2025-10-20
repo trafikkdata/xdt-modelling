@@ -1,20 +1,27 @@
-# I intersections
+# Illegal ramp turns
 
+# Taking a closer look at illegal ramp turns. 
+# So far haven't figured out a good way to identify them.
+
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
+
+# Load packages
 library(sf)
 library(dplyr)
-library(INLA)
 
-#config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
-
-source("R/utilities.R")
-source("R/model_fitting.R")
-
-
+# Data
+data <- readRDS("data/processed/engineered_data.rds")
+aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
-traffic_links <- readRDS("data/processed/engineered_data.rds")
 
 
-ramps <- dplyr::filter(traffic_links, isRamp) %>% 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Examining ramps ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+
+ramps <- dplyr::filter(data, isRamp) %>% 
   mutate(
     kd_number = stringr::str_extract(roadSystemReferences, "(?<=KD)\\d+"),   # extract digits after KD
     kd_number = as.integer(kd_number),             # convert to number
@@ -22,7 +29,6 @@ ramps <- dplyr::filter(traffic_links, isRamp) %>%
                         if_else(kd_number %% 2 == 0, "pakjoring", "avkjoring"))
   ) %>% add_geometry_to_traffic_links()
 
-#ramp_nodes <- unique(c(ramps$startTrafficNodeId, ramps$endTrafficNodeId))
 
 leaflet::leaflet(ramps, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) |>
   leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution)  |>
@@ -31,7 +37,7 @@ leaflet::leaflet(ramps, options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, z
     opacity = 1)
 
 ramps_long <- tidyr::pivot_longer(ramps, cols = c("startTrafficNodeId", "endTrafficNodeId"), 
-                                  names_to = "node_type", values_to = "node_id") #%>% 
+                                  names_to = "node_type", values_to = "node_id") 
 
 node_geometry <- select(nodes, id, geometry)
 
@@ -47,7 +53,6 @@ suspect_ramp_nodes <- ramps_long %>%
   dplyr::filter(illegal != "nothing detected") %>% 
   st_as_sf()
   
-  #tidyr::pivot_wider(id_cols = id, names_from = ramp_type, values_from = node_id)
 
 nvdb <- nvdb_objects()
 
@@ -58,3 +63,6 @@ leaflet::leaflet(suspect_ramp_nodes, options = leaflet::leafletOptions(crs = nvd
 
 # Jeg tror dette plukker opp de ulovlige svingebevegelsene, men det plukker opp 
 # veldig mye annet også, og her er det mye som ikke gir mening.
+
+
+

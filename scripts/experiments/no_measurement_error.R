@@ -1,24 +1,24 @@
-# Testing model with no measurement error
+# No measurement error
 
+# Testing model with no/less measurement error.
+
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
+
+# Load packages
 library(sf)
 library(dplyr)
-library(INLA)
 
-config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
-
-source("R/utilities.R")
-source("R/model_fitting.R")
-source("R/build_matrices.R")
-source("R/balancing_clusters.R")
-source("R/model_validation.R")
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Load data and matrices ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-
+# Data
 data <- readRDS("data/processed/engineered_data.rds")
-aadt2024 <- load_data(config$data_paths$raw$aadt_results)
+aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
+# Fit models ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
 trd <- filter(data, municipalityIds == "5001")
 

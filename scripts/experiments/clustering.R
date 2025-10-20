@@ -1,49 +1,32 @@
+# Clustering
+
+# Constructing the clusters to be used in balancing the predictions.
+# The balancing is too computationally intensive to be run on all of Norway in 
+# one, but it can be run on a smaller sub-area. 
+# In this script we examine properties of the constructed clusters.
+
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
+
+# Load packages
 library(sf)
 library(dplyr)
-library(reticulate)
-library(jsonlite)
 library(tidyverse)
 
-source("R/utilities.R")
-source("R/model_fitting.R")
-source("R/model_validation.R")
-source("R/balancing_clusters.R")
-
-# Load the Python functions once
-#source_python("python/balancing/cluster_on_prelim_aadt.py")
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-# Load data and matrices ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
-
+# Data
 data <- readRDS("data/processed/engineered_data.rds")
-geojson_nodes <- fromJSON("data/raw/traffic-nodes-2024.geojson", simplifyVector = FALSE)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 # Do clustering (or read in clusters) ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
-# Results from Johannes ----
-# clustered_johannes <- read.csv("../../directed-traffic-links-2024-clustered.csv")
-
-
-# Use "strategic_network_clustering", custom R function ----
-# First make undirected data
-# undirected <- data %>% distinct(parentTrafficLinkId, .keep_all = TRUE) %>% 
-#   select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId)
-# 
-# # Find parent traffic links where both children have data
-# parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% 
-#   summarise(child_link_has_data = all(!is.na(aadt)))
-# 
-# undirected <- full_join(undirected, parent_links_with_data)
-
 clustered <- strategic_network_clustering(data)
-saveRDS(clustered, "results/cluster_assignments.rds")
+#saveRDS(clustered, "results/cluster_assignments.rds")
 
 data_w_clusters <- dplyr::full_join(data, clustered, by = join_by(parentTrafficLinkId == id))
-saveRDS(data_w_clusters, "results/data_with_clusters.rds")
+#saveRDS(data_w_clusters, "results/data_with_clusters.rds")
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
