@@ -222,6 +222,23 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
     movements_df$outgoing[[i]] <- outgoing
   }
   
+  # Check if this is a boundary node
+  all_incoming <- unique(movements_df$incoming)
+  all_outgoing <- unique(unlist(movements_df$outgoing))
+  
+  # If any links are outside the cluster, this is a boundary node
+  is_boundary <- !all(all_incoming %in% link_ids) || !all(all_outgoing %in% link_ids)
+  
+  if(is_boundary) {
+    # Return empty constraint for boundary nodes
+    return(list(
+      flow_nodes = character(0),
+      constraint_rows = matrix(nrow = 0, ncol = length(link_ids)),
+      movements_data = movements_df,
+      is_boundary = TRUE
+    ))
+  }
+  
   # Create flow nodes by grouping movements
   flow_nodes <- create_flow_nodes(movements_df = movements_df, node_id = node_id)
   
@@ -264,19 +281,19 @@ process_turning_movements <- function(turning_movements_json, link_ids, node_id)
   rownames(constraint_rows) <- flow_node_names
   
   
-  num_outgoing_rowsums <- rowSums(as.matrix(constraint_rows) == 1)
-  common_nodes <- intersect(names(outgoing_counts), names(num_outgoing_rowsums))
-  nodes_to_exclude <- common_nodes[
-    outgoing_counts[common_nodes] != num_outgoing_rowsums[common_nodes]]
-  
-  constraint_rows <- constraint_rows[!rownames(constraint_rows) %in% nodes_to_exclude, , drop = FALSE]
-  if(nrow(constraint_rows) == 0) {
-    return(list(
-      flow_nodes = character(0),
-      constraint_rows = matrix(nrow = 0, ncol = length(link_ids)),
-      movements_data = data.frame()
-    ))
-  }
+  # num_outgoing_rowsums <- rowSums(as.matrix(constraint_rows) == 1)
+  # common_nodes <- intersect(names(outgoing_counts), names(num_outgoing_rowsums))
+  # nodes_to_exclude <- common_nodes[
+  #   outgoing_counts[common_nodes] != num_outgoing_rowsums[common_nodes]]
+  # 
+  # constraint_rows <- constraint_rows[!rownames(constraint_rows) %in% nodes_to_exclude, , drop = FALSE]
+  # if(nrow(constraint_rows) == 0) {
+  #   return(list(
+  #     flow_nodes = character(0),
+  #     constraint_rows = matrix(nrow = 0, ncol = length(link_ids)),
+  #     movements_data = data.frame()
+  #   ))
+  # }
   
   return(list(
     flow_nodes = flow_node_names,
