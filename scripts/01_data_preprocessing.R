@@ -1,15 +1,16 @@
 
-config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
 
-source("R/utilities.R")
-source("R/data_preprocessing.R")
-source("R/feature_engineering.R")
+# Load functions
+files.sources = list.files("R/", full.names = TRUE)
+sapply(files.sources, source)
 
 library(dplyr)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load raw data ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
 
 directed_traffic_links_json <- load_data(config$data_paths$raw$directed_traffic_links_json)
 directed_traffic_links_geojson <- load_data(config$data_paths$raw$directed_traffic_links_geojson)
