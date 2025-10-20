@@ -3,36 +3,45 @@
 
 data <- readRDS("data/processed/engineered_data.rds")
 
+
 undirected <- data %>% distinct(parentTrafficLinkId, .keep_all = TRUE) %>% 
-  select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId)
+  dplyr::select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId)
+
+# Find parent traffic links where both children have data
+parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% 
+  summarise(child_link_has_data = all(!is.na(aadt)))
+
+undirected <- dplyr::full_join(undirected, parent_links_with_data)
 
 # Create a mapping of traffic nodes to the links that connect to them
 node_to_links <- undirected %>%
   select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId) %>%
   # Reshape to long format: each row is a (node, link) pair
-  pivot_longer(cols = c(startTrafficNodeId, endTrafficNodeId), 
-               names_to = "endpoint", 
-               values_to = "traffic_node") %>%
-  select(traffic_node, link_id = parentTrafficLinkId) %>% 
+  tidyr::pivot_longer(cols = c(startTrafficNodeId, endTrafficNodeId), 
+                      names_to = "endpoint", 
+                      values_to = "traffic_node") %>%
+  dplyr::select(traffic_node, link_id = parentTrafficLinkId) %>% 
   tidyr::drop_na()
 
+# Find pairs of links that share traffic nodes
 link_connections <- node_to_links %>%
   # Self-join on traffic_node to find all links meeting at same node
-  inner_join(node_to_links, by = "traffic_node", relationship = "many-to-many") %>%
+  dplyr::inner_join(node_to_links, by = "traffic_node", relationship = "many-to-many") %>%
   # Don't connect link to itself
-  filter(link_id.x != link_id.y) %>%
+  dplyr::filter(link_id.x != link_id.y) %>%
   # Keep one direction only for undirected graph
-  mutate(link_pair = pmap_chr(list(link_id.x, link_id.y), ~paste(sort(c(...)), collapse = "-"))) %>%
-  distinct(link_pair, .keep_all = TRUE) %>%
-  select(from = link_id.x, to = link_id.y, traffic_node)
-
+  dplyr::mutate(link_pair = purrr::pmap_chr(list(link_id.x, link_id.y), ~paste(sort(c(...)), collapse = "-"))) %>%
+  dplyr::distinct(link_pair, .keep_all = TRUE) %>%
+  dplyr::select(from = link_id.x, to = link_id.y)
 
 # Build undirected graph with links as vertices
-network_graph <- graph_from_data_frame(
+network_graph <- igraph::graph_from_data_frame(
   link_connections, 
-  vertices = data.frame(name = data$parentTrafficLinkId),
+  vertices = data.frame(name = undirected$parentTrafficLinkId),
   directed = FALSE
 )
+
+
 
 
 

@@ -8,6 +8,191 @@ strategic_network_clustering <- function(data, target_clusters = 100, min_networ
   # Find parent traffic links where both children have data
   parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% 
     #summarise(child_link_has_data = all(bestDataSourceAadt_registrationFrequency == "CONTINUOUS"))
+    summarise(child_link_has_data = all(!is.na(bestDataSourceAadt_trafficVolumeValue)))
+  
+  undirected <- dplyr::full_join(undirected, parent_links_with_data)
+  
+  cat("Building link adjacency graph (links as vertices)...\n")
+  
+  # Step 1: Build graph where traffic links are vertices
+  # Two links are connected if they share a traffic node
+  
+  n_missing_nodes <- sum(is.na(undirected$startTrafficNodeId))
+  if(n_missing_nodes > 0){
+    warning(paste("There are", n_missing_nodes, "traffic links that are missing nodes.\n"))
+    undirected <- undirected %>% drop_na()
+  }
+  
+  # Create a mapping of traffic nodes to the links that connect to them
+  node_to_links <- undirected %>%
+    select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId) %>%
+    # Reshape to long format: each row is a (node, link) pair
+    tidyr::pivot_longer(cols = c(startTrafficNodeId, endTrafficNodeId), 
+                        names_to = "endpoint", 
+                        values_to = "traffic_node") %>%
+    dplyr::select(traffic_node, link_id = parentTrafficLinkId) %>% 
+    tidyr::drop_na()
+  
+  # Find pairs of links that share traffic nodes
+  link_connections <- node_to_links %>%
+    # Self-join on traffic_node to find all links meeting at same node
+    dplyr::inner_join(node_to_links, by = "traffic_node", relationship = "many-to-many") %>%
+    # Don't connect link to itself
+    dplyr::filter(link_id.x != link_id.y) %>%
+    # Keep one direction only for undirected graph
+    dplyr::mutate(link_pair = purrr::pmap_chr(list(link_id.x, link_id.y), ~paste(sort(c(...)), collapse = "-"))) %>%
+    dplyr::distinct(link_pair, .keep_all = TRUE) %>%
+    dplyr::select(from = link_id.x, to = link_id.y)
+  
+  # Build undirected graph with links as vertices
+  network_graph <- igraph::graph_from_data_frame(
+    link_connections, 
+    vertices = data.frame(name = undirected$parentTrafficLinkId),
+    directed = FALSE
+  )
+  
+  cat(paste("Link adjacency graph built:", vcount(network_graph), "links,", 
+            ecount(network_graph), "connections\n"))
+  
+  # NEW: Identify mainland vs island components
+  cat("Identifying mainland and island components...\n")
+  all_components <- components(network_graph)
+  
+  # Find the largest component (mainland)
+  component_sizes <- table(all_components$membership)
+  mainland_component_id <- as.integer(names(which.max(component_sizes)))
+  
+  # Separate mainland and island links
+  mainland_links <- names(all_components$membership[all_components$membership == mainland_component_id])
+  island_components <- all_components$membership[all_components$membership != mainland_component_id]
+  
+  cat(paste("Mainland component:", length(mainland_links), "links\n"))
+  cat(paste("Island components:", length(unique(island_components)), "separate islands\n"))
+  cat(paste("Total island links:", length(island_components), "\n"))
+  
+  # Create subgraph for mainland only
+  mainland_graph <- induced_subgraph(network_graph, mainland_links)
+  
+  # Step 2: Strategic sampling of measurement points (MAINLAND ONLY)
+  measurement_links <- undirected$parentTrafficLinkId[undirected$child_link_has_data == TRUE]
+  mainland_measurement_links <- intersect(measurement_links, mainland_links)
+  
+  cat(paste("Total measurement links:", length(measurement_links), "\n"))
+  cat(paste("Mainland measurement links:", length(mainland_measurement_links), "\n"))
+  
+  # Use all measurement links as barriers (or apply your preferred sampling strategy)
+  selected_barriers <- mainland_measurement_links
+  
+  cat(paste("Selected", length(selected_barriers), "barrier points on mainland\n"))
+  
+  # Step 3: Create base clusters by removing barriers (MAINLAND ONLY)
+  cat("Creating base clusters on mainland...\n")
+  
+  # Remove barrier links from mainland network
+  remaining_links <- setdiff(V(mainland_graph)$name, selected_barriers)
+  cluster_graph <- induced_subgraph(mainland_graph, remaining_links)
+  
+  # Find connected components
+  mainland_components <- components(cluster_graph)
+  cat(paste("Found", mainland_components$no, "base clusters on mainland\n"))
+  
+  # Create base cluster assignments for mainland
+  base_assignments <- data.frame(
+    id = names(mainland_components$membership),
+    cluster_id = mainland_components$membership,
+    stringsAsFactors = FALSE
+  )
+  
+  # Step 4: Assign barrier links to neighboring clusters (MAINLAND ONLY)
+  cat("Assigning barrier links to neighboring mainland clusters...\n")
+  
+  barrier_assignments <- assign_barriers_to_clusters(
+    mainland_graph, 
+    selected_barriers, 
+    base_assignments
+  )
+  
+  # Step 5: Handle non-barrier measurement links (MAINLAND ONLY)
+  non_barrier_measurements <- setdiff(mainland_measurement_links, selected_barriers)
+  measurement_assignments <- assign_measurements_to_clusters(
+    base_assignments,
+    non_barrier_measurements
+  )
+  
+  # Step 6: Combine mainland assignments
+  mainland_assignments <- rbind(
+    base_assignments,
+    barrier_assignments,
+    measurement_assignments
+  )
+  
+  # NEW: Handle island components - each island becomes one cluster
+  cat("Assigning island components...\n")
+  
+  max_mainland_cluster <- max(mainland_assignments$cluster_id)
+  
+  # Create unique cluster ID for each island component
+  island_cluster_map <- data.frame(
+    original_component = unique(island_components),
+    cluster_id = (max_mainland_cluster + 1):(max_mainland_cluster + length(unique(island_components)))
+  )
+  
+  island_assignments <- data.frame(
+    id = names(island_components),
+    original_component = as.integer(island_components),
+    stringsAsFactors = FALSE
+  ) %>%
+    left_join(island_cluster_map, by = "original_component") %>%
+    select(id, cluster_id)
+  
+  cat(paste("Assigned", length(unique(island_components)), "island clusters\n"))
+  
+  # Step 7: Combine mainland and island assignments
+  all_assignments <- rbind(
+    mainland_assignments,
+    island_assignments
+  )
+  
+  # Handle any unassigned links
+  unassigned_links <- setdiff(undirected$parentTrafficLinkId, all_assignments$id)
+  if(length(unassigned_links) > 0) {
+    cat(paste("Creating singleton clusters for", length(unassigned_links), "unassigned links\n"))
+    
+    max_cluster <- max(all_assignments$cluster_id)
+    singleton_assignments <- data.frame(
+      id = unassigned_links,
+      cluster_id = (max_cluster + 1):(max_cluster + length(unassigned_links)),
+      stringsAsFactors = FALSE
+    )
+    
+    all_assignments <- rbind(all_assignments, singleton_assignments)
+  }
+  
+  # Summary
+  cluster_sizes <- table(all_assignments$cluster_id)
+  duplicate_count <- sum(duplicated(all_assignments$id))
+  
+  cat("\nClustering Summary:\n")
+  cat(paste("Total clusters:", length(cluster_sizes), "(", 
+            mainland_components$no, "mainland +", 
+            length(unassigned_links), "singleton clusters +",
+            length(unique(island_components)), "islands)\n"))
+  cat(paste("Total assignments:", nrow(all_assignments), "\n"))
+  cat(paste("Unique links:", length(unique(all_assignments$id)), "\n"))
+  cat(paste("Duplicate assignments (boundary links):", duplicate_count, "\n"))
+  cat("Cluster size distribution:\n")
+  print(summary(as.numeric(cluster_sizes)))
+  
+  return(all_assignments)
+}
+
+strategic_network_clustering_old <- function(data, target_clusters = 100, min_network_distance = 5) {
+  undirected <- data %>% distinct(parentTrafficLinkId, .keep_all = TRUE) %>% 
+    dplyr::select(parentTrafficLinkId, startTrafficNodeId, endTrafficNodeId)
+  
+  # Find parent traffic links where both children have data
+  parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% 
+    #summarise(child_link_has_data = all(bestDataSourceAadt_registrationFrequency == "CONTINUOUS"))
     summarise(child_link_has_data = all(!is.na(aadt)))
   
   undirected <- dplyr::full_join(undirected, parent_links_with_data)
