@@ -7,8 +7,8 @@ strategic_network_clustering <- function(data, target_clusters = 100, min_networ
   
   # Find parent traffic links where both children have data
   parent_links_with_data <- data %>% group_by(parentTrafficLinkId) %>% 
-    #summarise(child_link_has_data = all(bestDataSourceAadt_registrationFrequency == "CONTINUOUS"))
-    summarise(child_link_has_data = all(!is.na(bestDataSourceAadt_trafficVolumeValue)))
+    summarise(child_link_has_data = all(bestDataSourceAadt_registrationFrequency == "CONTINUOUS"))
+    #summarise(child_link_has_data = all(!is.na(bestDataSourceAadt_trafficVolumeValue)))
   
   undirected <- dplyr::full_join(undirected, parent_links_with_data)
   
