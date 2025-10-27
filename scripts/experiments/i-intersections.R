@@ -94,6 +94,7 @@ nrow(used_all_candidates)/nrow(nodes)*100
 
 covariates <- c("functionalRoadClass:maxLanes",
                 "minLanes:roadCategory",
+                "functionalRoadClass:isRamp",
                 "functionalRoadClass",
                 "maxLanes",
                 "roadCategory")
