@@ -41,7 +41,8 @@ preprocess_traffic_data <- function(raw_data,
                        lowest_certainty = lowest_certainty, 
                        no_of_days = no_of_days,
                        location_uncertainties = location_uncertainties) %>% 
-    round_and_check_aadt()
+    round_and_check_aadt() %>% 
+    assign_traffic_volume_source(current_year = 2024)
   
   check_data_completeness(df)
 
@@ -281,6 +282,31 @@ round_and_check_aadt <- function(df){
   df$aadt <- round(df$aadt)
   df$aadt[df$aadt < 0] <- 0
   
+  return(df)
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Assign traffic volume source ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+assign_traffic_volume_source <- function(df, current_year){
+  df <- df %>% 
+    dplyr::mutate(
+      traffic_volume_source = dplyr::case_when(
+        bestDataSourceAadt_trafficVolumeType == "DERIVED" ~ "Derived",
+        bestDataSourceAadt_sourceType == "EXTERNAL" & isFerryRoute ~ "Ferry",
+        bestDataSourceAadt_sourceType == "EXTERNAL" ~ "External_municipal",
+        bestDataSourceAadt_sourceType == "TOLL_STATION_AUTOPASS" ~ "AutoPASS",
+        bestDataSourceAadt_sourceType == "TRAFIKKDATA" & 
+          bestDataSourceAadt_registrationFrequency == "PERIODIC" ~ "Trafikkdata_periodic",
+        bestDataSourceAadt_sourceType == "TRAFIKKDATA" & 
+          bestDataSourceAadt_registrationFrequency == "CONTINUOUS" ~ "Trafikkdata_continuous",
+        is.na(bestDataSourceAadt_trafficVolumeValue) & !is.na(aadt) ~ "Bus"
+      ),
+      traffic_volume_year = dplyr::case_when(
+        traffic_volume_source == "Bus" ~ current_year,
+        .default = bestDataSourceAadt_year)
+      )
   return(df)
 }
 
