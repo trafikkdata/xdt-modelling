@@ -493,3 +493,7 @@ build_measurement_matrix <- function(data, colname_aadt = "aadt") {
   
   return(as.matrix(A_2))
 }
+
+
+
+
