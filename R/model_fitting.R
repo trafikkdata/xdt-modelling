@@ -171,6 +171,19 @@ fit_group_model <- function(data, covariates, adjacency_matrix = NULL){
 
 balance_predictions <- function(data, nodes, balancing_grouping_variable, 
                                 nodes_to_balance){
+  
+  # Assign measurement error to observed values
+  sigma_error <- calculate_measurement_error(
+    data = data,
+    aadt_col = "aadt",
+    source_col = "traffic_volume_source",
+    year_col = "traffic_volume_year",
+    coverage_col = "bestDataSourceAadt_coverage",
+    current_year = 2024
+  )
+  
+  data$sigma_error <- sigma_error
+  
   # Here we need to assign the balancing groups. 
   # When joining the balancing groups to the data, this will create duplicates.
   
@@ -240,7 +253,7 @@ balance_predictions <- function(data, nodes, balancing_grouping_variable,
 
 balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd = NULL, 
                                       constraint_matrix = NULL,
-                                      colname_aadt = "aadt", colname_sd = "aadt_sd", 
+                                      colname_aadt = "aadt", colname_sd = "sigma_error", 
                                       lambda = 1e-10, nodes_to_balance){
   start_time <- Sys.time()
   one_node_flag <- FALSE   # Flagging if a group has only one node
@@ -305,7 +318,7 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
   }else{
     A2 <- as.matrix(build_measurement_matrix(data, colname_aadt = colname_aadt))
     d <- na.omit(data[[colname_aadt]])
-    me_var_scaling <- 0.1
+    me_var_scaling <- 1
     Sigma_epsilon_mark <- diag(as.vector(na.omit(data[[colname_sd]]*me_var_scaling)^2), 
                                nrow = length(na.omit(data[[colname_sd]])))
   }
@@ -324,8 +337,6 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
     max_reasonable <- 1e10
     capped_count <- sum(diag(Sigma_v) > max_reasonable)
     diag(Sigma_v)[diag(Sigma_v) > max_reasonable] <- max_reasonable
-    
-    warning(paste("Capped", capped_count, "extreme variances"))
   }
   
   # Step 2: Convert to dense matrices
@@ -382,7 +393,8 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
   Sigma_v_given_b <- Sigma_v - Sigma_vb %*% Sigma_b_inv %*% t(Sigma_vb)
   
   # Some elements may be less than 0, set them to small number
-  mu_v_given_b[mu_v_given_b <= 0] <- 1
+  below_zero_count <- sum(mu_v_given_b <= 0)
+  mu_v_given_b[mu_v_given_b <= 0] <- 0
   
   end_time <- Sys.time()
   
@@ -405,6 +417,8 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
       n_links = ncol(A),
       n_constraints = nrow(A1),
       underdetermined = ncol(A2) > nrow(A2),
+      capped_count = capped_count,
+      below_zero_count = below_zero_count,
       runtime = end_time - start_time
     ),
     matrices = list(A1 = A1, A2 = A2)
