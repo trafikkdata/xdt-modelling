@@ -31,6 +31,7 @@ calculate_approved <- function(
   data$sd <- sd
   
   # Check that truth column is numeric
+  data_manual[[truth_name]][data_manual[[truth_name]] == "null"] <- NA
   data_manual[[truth_name]] <- as.numeric(data_manual[[truth_name]])
   #data_manual$ÅDT.offisiell <- as.numeric(data_manual$ÅDT.offisiell)
   
