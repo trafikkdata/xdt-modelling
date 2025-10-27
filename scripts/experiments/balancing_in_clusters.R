@@ -14,6 +14,7 @@ sapply(files.sources, source)
 # Load packages
 library(sf)
 library(dplyr)
+library(ggplot2)
 
 # Data
 data <- readRDS("data/processed/engineered_data.rds")
@@ -54,6 +55,12 @@ trondelag_in_one <- run_modeling_pipeline(
   model_name = "balancing_in_one"
 )
 
+saveRDS(list(trondelag_cluster = trondelag_cluster, 
+             trondelag_in_one = trondelag_in_one), 
+        "results/trondelag_cluster_or_not.rds")
+
+trondelag_cluster <- readRDS("results/trondelag_cluster_or_not.rds")$trondelag_cluster
+
 # In principle, these two calls should produce roughly identical predictions.
 kommunenavn <- read.csv("data/raw/kommunenummer.csv", sep = ";") %>% 
   mutate(kommunenummer = as.character(kommunenummer))
@@ -61,12 +68,43 @@ kommunenavn <- read.csv("data/raw/kommunenummer.csv", sep = ";") %>%
 trondelag_comparison <- data.frame(
   id = trondelag_cluster$data$id,
   municipalityIds = trondelag_cluster$data$municipalityIds,
+  aadt = trondelag_cluster$data$aadt,
+  source = trondelag_cluster$data$bestDataSourceAadt_registrationFrequency,
   pred.cluster = trondelag_cluster$data$balanced_pred, 
   pred.in_one = trondelag_in_one$data$balanced_pred) %>% 
   mutate(difference = abs(pred.cluster - pred.in_one),
          ale = abs(log(pred.cluster) - log(pred.in_one)),
          municipalityIds = as.character(municipalityIds)) %>% 
-  left_join(kommunenavn, join_by(municipalityIds == kommunenummer))
+  left_join(kommunenavn, join_by(municipalityIds == kommunenummer)) %>% 
+  mutate(text = paste0("TRP ID: ", id,
+                       "<br>pred.cluster: ", pred.cluster,
+                       "<br>pred.in_one: ", pred.in_one,
+                       "<br>Difference: ", difference,
+                       "<br>Measured or derived: ", aadt,
+                       "<br>Source: ", source)) %>% 
+  add_geometry_to_traffic_links()
+
+nvdb <- nvdb_objects()
+
+pal <- leaflet::colorNumeric(
+  palette = "viridis",
+  reverse = TRUE,
+  na.color = "#88807b",
+  domain = trondelag_comparison$difference
+)
+
+leaflet::leaflet(trondelag_comparison,
+                 options = leaflet::leafletOptions(crs = nvdb$nvdb_crs, zoomControl = TRUE)) %>%
+  leaflet::addTiles(urlTemplate = nvdb$nvdb_url, attribution = nvdb$nvdb_attribution) %>%
+  leaflet::addPolylines(
+    color = ~ pal(difference),
+    popup = ~ text,
+    opacity = 1
+  ) %>%
+  leaflet::addLegend("bottomright",
+                     pal = pal,
+                     values = ~ difference,
+                     opacity = 1)
 
 
 ggplot(trondelag_comparison, aes(x = pred.in_one, y = pred.cluster)) +
