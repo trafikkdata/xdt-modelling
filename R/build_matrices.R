@@ -102,26 +102,18 @@ build_incidence_matrix <- function(nodes, traffic_links, nodes_to_balance){
 
 
 remove_incomplete_nodes <- function(nodes, nodes_to_balance){
-  nodes$number_of_traffic_links <- lengths(nodes$connectedTrafficLinkIds)
-  nodes$number_of_candidate_links <- lengths(nodes$connectedTrafficLinkCandidateIds)
-  
-  incomplete_intersections <- dplyr::filter(
-    nodes, 
-    number_of_traffic_links < number_of_candidate_links)
-  
+  unbalancable <- filter(nodes, unbalancable_node)$id
+  i_intersection <- filter(nodes, i_intersection)$id
   
   if(nodes_to_balance == "complete_nodes"){
-    # Return all nodes that are complete
-    return(unique(nodes$id[!nodes$id %in% incomplete_intersections$id]))
+    # Return all nodes that balancable and are not I-intersections
+    balancable_nodes <- setdiff(nodes$id, union(unbalancable, i_intersection))
+    return(balancable_nodes)
   }
   
-  i_intersections <- filter(incomplete_intersections,
-                            numberOfIncomingLinks == 2,
-                            numberOfOutgoingLinks == 2,
-                            numberOfUndirectedLinks == 2)
-  
+  not_i_intersection <- setdiff(nodes$id, i_intersection)
   # Return all the nodes that are not I-intersections
-  return(unique(nodes$id[!nodes$id %in% i_intersections$id]))
+  return(not_i_intersection)
 }
 
 
