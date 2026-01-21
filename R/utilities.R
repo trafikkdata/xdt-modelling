@@ -20,7 +20,7 @@ add_geometry_to_traffic_links <- function(df, id_name = "id", directed = TRUE){
     directed <- FALSE
   }
   
-  geom <- readRDS("data/processed/traffic_link_geometries.rds")
+  geom <- readRDS(here::here("data/processed/traffic_link_geometries.rds"))
   
   id_name_geom <- ifelse(directed, "id", "parentTrafficLinkId")
   
