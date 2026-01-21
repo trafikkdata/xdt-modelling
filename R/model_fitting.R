@@ -4,6 +4,9 @@
 
 run_modeling_pipeline <- function(
     data = NULL,
+    nodes = NULL,
+    aadt2024 = NULL, # TODO: remove this eventually and keep validation separate
+    adjacency_matrix = NULL,
     inla_grouping_variable = NULL,
     inla_groups_to_process = "all",
     balancing_grouping_variable = inla_grouping_variable, # Can be a character vector, or a data frame containing the ID's and the group assignments
@@ -17,13 +20,16 @@ run_modeling_pipeline <- function(
     model_name = "model"
 ) {
   
-  config <- yaml::read_yaml("config/data_config.yaml", readLines.warn = FALSE)
   
   if(is.null(data)){
     data <- readRDS("data/processed/engineered_data.rds")
   }
-  aadt2024 <- load_data(config$data_paths$raw$aadt_results)
-  nodes <- sf::read_sf("data/raw/traffic-nodes-2024.geojson")
+  if(is.null(aadt2024)){
+    aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
+  }
+  if(is.null(nodes)){
+    nodes <- readRDS("data/processed/nodes.RDS")
+  }
   
   # Filter out groups to process
   if(inla_groups_to_process != "all"){
@@ -35,6 +41,7 @@ run_modeling_pipeline <- function(
   # Fit national model either all in one, or divided up by the grouping categories
   national_model <- fit_national_model(data, 
                                        covariates,
+                                       adjacency_matrix, 
                                        inla_grouping_variable)
   
   data <- dplyr::full_join(data, national_model$inla_result)
@@ -62,9 +69,10 @@ run_modeling_pipeline <- function(
     cat("Predictions successfully balanced.\n")
   }
   
-  diagnostics$approval <- calculate_approved(data = data,
-                                             data_manual = aadt2024,
-                                             model_name = model_name)
+  diagnostics$approval <- calculate_approval_metrics(
+    data = data,
+    data_manual = aadt2024,
+    model_name = model_name)
   
   # Return comprehensive results
   return(list(data = data, 
@@ -87,7 +95,7 @@ extract_group_data <- function(all_data, group_name, grouping_variable) {
 # INLA model fitting functions ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-fit_national_model <- function(data, covariates, inla_grouping_variable) {
+fit_national_model <- function(data, covariates, adjacency_matrix, inla_grouping_variable) {
   if (!is.null(inla_grouping_variable)) {
     # Fit model on group_data only
     cat("Fitting INLA model on all groups... ------------- \n")
@@ -120,7 +128,9 @@ fit_national_model <- function(data, covariates, inla_grouping_variable) {
     # Fit model on national data, extract group predictions
     cat("Fitting national INLA model... ------------- \n")
     
-    adjacency_matrix <- readRDS("data/processed/adjacency_matrix_2024.rds")
+    if(is.null(adjacency_matrix)){
+      adjacency_matrix <- readRDS("data/processed/adjacency_matrix_2024.rds")
+    }
     
     results <- fit_group_model(data, covariates, adjacency_matrix)
     data$pred <- results$posterior_median
@@ -329,6 +339,8 @@ balance_group_predictions <- function(data, nodes, model = NULL, pred = NULL, sd
   
   d <- if (n_p == 0) numeric(0) else d
   b <- c(rep(0, n_n), d)
+  
+  capped_count <- 0
   
   # Step 1: Handle extreme variances
   if (max(diag(Sigma_v)) > 1e10 || kappa(Sigma_v) > 1e12) {
