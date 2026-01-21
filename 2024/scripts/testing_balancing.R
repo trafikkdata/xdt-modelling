@@ -1,14 +1,14 @@
 # Testing balancing
 year <- 2024
-raw_path <- "data-raw/"
+path <- paste0(year, "/")
 
-prepared_traffic_links <- readRDS(paste0(raw_path, "prepared/prepared_traffic_links", year, ".rds"))
+prepared_traffic_links <- readRDS(paste0(path, "data-prepared/prepared_traffic_links", year, ".rds"))
 
-predictions_inla <- readRDS("data-raw/results/predictions_total.rds") |>
+predictions_inla <- readRDS(paste0(path, "results/predictions_total.rds")) |>
   #dplyr::select(-balanced_pred, -balanced_sd) %>%
   dplyr::filter(county == "Telemark")
 
-nodes <- readRDS(paste0(raw_path, "prepared/prepared_nodes", year, ".rds"))
+nodes <- readRDS(paste0(path, "data-prepared/prepared_nodes", year, ".rds"))
 
 
 predictions_balanced <- balance_predictions(data = predictions_inla,

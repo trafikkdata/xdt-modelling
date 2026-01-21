@@ -1,8 +1,11 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Load data
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-predictions_total <- readRDS("data-raw/predictions_total.rds")
-predictions_heavy <- readRDS("data-raw/predictions_heavy.rds")
+year <- 2024
+path <- paste0(year, "/")
+
+predictions_total <- readRDS(paste0(path, "data-raw/predictions_total.rds"))
+predictions_heavy <- readRDS(paste0(path, "data-raw/predictions_heavy.rds"))
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Examining total AADT results

@@ -1,16 +1,16 @@
 # Testing Poisson vs negative binomial
 library(dplyr)
 year <- 2024
-raw_path <- "data-raw/"
+path <- paste0(year, "/")
 
 # Load data
-prepared_traffic_links <- readRDS(paste0(raw_path, "prepared_traffic_links", year, ".rds"))
+prepared_traffic_links <- readRDS(paste0(path, "prepared-data/prepared_traffic_links", year, ".rds"))
 
 missing_fc <- directed_traffic_links %>% filter(functionClass == "unknown")
 table(missing_fc$roadCategory)
 
 #nodes <- readRDS(paste0(raw_path, "prepared_nodes", year, ".rds"))
-adjacency_matrix <- readRDS(paste0(raw_path, "adjacency_matrix", year, ".rds"))
+adjacency_matrix <- readRDS(paste0(path, "prepared/adjacency_matrix", year, ".rds"))
 #clusters <- readRDS(paste0(raw_path, "clusters", year, ".rds"))
 
 prepared_traffic_links$lastYearAadt_logAadt <- log(prepared_traffic_links$lastYearAadt_aadt + 1)

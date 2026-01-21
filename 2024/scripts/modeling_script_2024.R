@@ -1,21 +1,24 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # 1. Preprocess data and create everything that takes time.
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+library(xdtkit)
+
 year <- 2024
-raw_path <- "data-raw/"
+path <- paste0(year, "/")
+
 
 # Traffic links: Load and preprocess
-directed_traffic_links <- jsonlite::fromJSON(paste0(raw_path, "raw/directed-traffic-links-", year, ".json"))
-preprocessed_traffic_links <- preprocess_traffic_links(directed_traffic_links, year = 2024)
+directed_traffic_links <- jsonlite::fromJSON(paste0(path, "data-raw/directed-traffic-links-", year, ".json"))
+preprocessed_traffic_links <- preprocess_traffic_links(directed_traffic_links, year = year)
 
 missing_counts <- colSums(is.na(preprocessed_traffic_links))
 missing_counts[missing_counts > 0]
 
 # Bus data: Load and preprocess
-stops_on_traffic_links <- read.csv(paste0(raw_path, "raw/trafikklenker_med_holdeplasser_", year, ".csv"))
-bus_counts <- read.csv(paste0(raw_path, "raw/holdeplasspasseringer_entur_", year, ".csv"))
+stops_on_traffic_links <- read.csv(paste0(path, "data-raw/trafikklenker_med_holdeplasser_", year, ".csv"))
+bus_counts <- read.csv(paste0(path, "data-raw/holdeplasspasseringer_entur_", year, ".csv"))
 
-bus_aadt <- calculate_bus_aadt(stops_on_traffic_links, bus_counts, year = 2024)
+bus_aadt <- calculate_bus_aadt(stops_on_traffic_links, bus_counts, year = year)
 
 # Fill missing values and add bus data
 prepared_traffic_links <- fill_missing_values(
@@ -31,7 +34,7 @@ missing_counts[missing_counts > 0]
 
 
 # Nodes: Load and preprocess
-raw_nodes_geo <- sf::st_read(paste0(raw_path, "raw/traffic-nodes-", year, ".geojson"))
+raw_nodes_geo <- sf::st_read(paste0(path, "data-raw/traffic-nodes-", year, ".geojson"))
 nodes <- identify_unbalanceable_nodes(raw_nodes_geo, prepared_traffic_links) # This may take a while to run
 
 # Adjacency matrix
@@ -54,10 +57,10 @@ saveRDS(clusters, paste0(raw_path, "prepared/clusters", year, ".rds"))
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Load data
-prepared_traffic_links <- readRDS(paste0(raw_path, "prepared/prepared_traffic_links", year, ".rds"))
-nodes <- readRDS(paste0(raw_path, "prepared/prepared_nodes", year, ".rds"))
-adjacency_matrix <- readRDS(paste0(raw_path, "prepared/adjacency_matrix", year, ".rds"))
-clusters <- readRDS(paste0(raw_path, "prepared/clusters", year, ".rds"))
+prepared_traffic_links <- readRDS(paste0(path, "data-prepared/prepared_traffic_links", year, ".rds"))
+nodes <- readRDS(paste0(path, "data-prepared/prepared_nodes", year, ".rds"))
+adjacency_matrix <- readRDS(paste0(path, "data-prepared/adjacency_matrix", year, ".rds"))
+clusters <- readRDS(paste0(path, "data-prepared/clusters", year, ".rds"))
 
 covariates <- ~ functionalRoadClass:maxLanes +
   functionalRoadClass:roadCategory +
@@ -95,7 +98,7 @@ balanced_model_total <- balance_predictions(data = predictions_total,
 
 predictions_total <- dplyr::full_join(predictions_total, balanced_model_total$balanced_res)
 
-saveRDS(predictions_total, "data-raw/results/predictions_total.rds")
+saveRDS(predictions_total, paste0(path, "results/predictions_total.rds"))
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # 3.a Run INLA model for heavy AADT.
@@ -128,7 +131,7 @@ balanced_model_heavy <- balance_predictions(data = predictions_heavy,
 
 predictions_heavy <- dplyr::full_join(predictions_heavy, balanced_model_heavy$balanced_res)
 
-saveRDS(predictions_heavy, "data-raw/results/predictions_heavy.rds")
+saveRDS(predictions_heavy, paste0(path, "results/predictions_heavy.rds"))
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Publish to GitHub.
@@ -166,24 +169,10 @@ colSums(is.na(data_2025))
 # An actual release
 #upload_df_to_github_release(data_2025, year = 2025, prerelease = FALSE, overwrite = TRUE)
 
+# Save session info
+saveRDS(sessionInfo(), file.path(path, "session_info.rds"))
 
 
 
 
 
-
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Visualize the difference ----
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Which links lost connections?
-neighbor_diff <- Matrix::rowSums(adj_matrix_full) - Matrix::rowSums(adj_matrix_excl_pt)
-
-tibble::tibble(
-  link_id = 1:10,
-  has_pt_only = link_data$hasOnlyPublicTransportLanes,
-  neighbors_lost = neighbor_diff
-) |>
-  dplyr::filter(neighbors_lost > 0 | has_pt_only)
