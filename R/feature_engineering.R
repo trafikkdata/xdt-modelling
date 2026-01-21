@@ -3,12 +3,12 @@
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 engineer_features <- function(df, columns_to_fill = NULL, scale_cols){
-  df <- df %>% 
-    fill_missing_entries(columns_to_fill = columns_to_fill) %>% 
-    merge_sparse_categories() %>% 
-    add_county() %>% 
-    add_roadSystem() %>% 
-    add_logLength() %>% 
+  df <- df |> 
+    fill_missing_entries(columns_to_fill = columns_to_fill) |> 
+    merge_sparse_categories() |> 
+    add_county() |> 
+    add_roadSystem() |> 
+    add_logLength() |> 
     scale_numeric_features(scale_cols = scale_cols)
   
   return(df)
@@ -19,28 +19,51 @@ engineer_features <- function(df, columns_to_fill = NULL, scale_cols){
 # Fill missing values ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-fill_missing_entries <- function(df, columns_to_fill = NULL){
-  if(is.null(columns_to_fill)){
+fill_missing_entries <- function(df, columns_to_fill = NULL, method = "unknown") {
+  # Identify columns to fill
+  if (is.null(columns_to_fill)) {
     cols_with_missing <- names(which(colSums(is.na(df)) > 0))
     columns_to_fill <- cols_with_missing[
-      !stringr::str_starts(cols_with_missing, "bestDataSourceAadt_")]
+      !stringr::str_starts(cols_with_missing, "bestDataSourceAadt_")
+    ]
   }
   
-  Mode <- function(x) {
-    ux <- unique(x)
-    ux[which.max(tabulate(match(x, ux)))]
+  # Fill missing values based on method
+  if (method == "unknown") {
+    # Simple replacement 
+    df <- df |>
+      dplyr::mutate(dplyr::across(
+        dplyr::all_of(columns_to_fill),
+        ~ tidyr::replace_na(.x, "unknown")
+      ))
+    
+  } else if (method == "mode") {
+    # Mode imputation
+    Mode <- function(x) {
+      ux <- unique(x[!is.na(x)])  # Exclude NAs when finding mode
+      if (length(ux) == 0) return(NA)
+      ux[which.max(tabulate(match(x, ux)))]
+    }
+    
+    mode_values <- df |>
+      dplyr::select(dplyr::all_of(columns_to_fill)) |>
+      dplyr::summarise(dplyr::across(dplyr::everything(), Mode))
+    
+    df <- df |>
+      dplyr::mutate(dplyr::across(
+        dplyr::all_of(columns_to_fill),
+        ~ dplyr::coalesce(.x, mode_values[[dplyr::cur_column()]])
+      ))
+    
+  } else {
+    stop("method must be either 'mode' or 'unknown'")
   }
   
-  # Handle NA's
-  mode_df <- df %>% dplyr::select(dplyr::all_of(columns_to_fill)) %>% 
-    dplyr::summarise(dplyr::across(dplyr::everything(), Mode)) %>% 
-    as.list()
-  df <- df %>% tidyr::replace_na(mode_df)
   return(df)
 }
 
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Merge sparse categories ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -99,6 +122,31 @@ add_county <- function(df){
     dplyr::mutate(county = as.factor(county_mapping[as.character(countyIds)]))
 }
 
+add_county <- function(df, county_number_col) {
+  # Named vector for mapping
+  county_map <- c(
+    "3" = 'Oslo',
+    "11" = 'Rogaland',
+    "15" = 'Møre og Romsdal',
+    "18" = 'Nordland',
+    "31" = 'Østfold',
+    "32" = 'Akershus',
+    "33" = 'Buskerud',
+    "34" = 'Innlandet',
+    "39" = 'Vestfold',
+    "40" = 'Telemark',
+    "42" = 'Agder',
+    "46" = 'Vestland',
+    "50" = 'Trøndelag',
+    "55" = 'Troms',
+    "56" = 'Finnmark'
+  )
+  
+  df$county_name <- county_map[as.character(df[[county_number_col]])]
+  return(df)
+}
+
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Add roadSystem variable ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -124,4 +172,47 @@ add_logLength <- function(df){
 scale_numeric_features <- function(df, scale_cols){
   df[scale_cols] <- scale(df[scale_cols])
   return(df)
+}
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Identify unbalancable nodes ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+identify_unbalancable_nodes <- function(){
+  data <- readRDS("data/processed/engineered_data.rds")
+  nodes_raw <- sf::read_sf("data/raw/traffic-nodes-2024.geojson")
+  
+  # Unnest to get one row per node-traffic link combination
+  node_traffic_links <- nodes_raw |> sf::st_drop_geometry() |> 
+    dplyr::select(id, connectedTrafficLinkIds, roadSystems) |>
+    tidyr::unnest(connectedTrafficLinkIds)
+  
+  # Join with data to get road systems from traffic links
+  node_covered_systems <- node_traffic_links |>
+    dplyr::left_join(data |> dplyr::select(parentTrafficLinkId, roadSystem) |> 
+                       dplyr::distinct(), 
+              by = c("connectedTrafficLinkIds" = "parentTrafficLinkId")) |>
+    dplyr::group_by(id) |>
+    dplyr::summarise(
+      roadSystems = list(first(roadSystems)),
+      n_roadSystems = length(first(roadSystems)),
+      trafficLinkRoadSystems = list(unique(roadSystem)),
+      n_trafficLinkRoadSystems = length(unique(roadSystem))
+    )
+  
+  nodes <- nodes_raw |> dplyr::left_join(node_covered_systems)
+
+  nodes <- nodes |> 
+    dplyr::mutate(
+      number_of_traffic_links = lengths(connectedTrafficLinkIds),
+      number_of_candidate_links = lengths(connectedTrafficLinkCandidateIds),
+      # I intersections
+      i_intersection = numberOfIncomingLinks == 2 & 
+        numberOfOutgoingLinks == 2 & 
+        numberOfUndirectedLinks == 2 & 
+        n_roadSystems > n_trafficLinkRoadSystems,
+      # Incomplete nodes
+      unbalancable_node = number_of_candidate_links > number_of_traffic_links)
+  
+  return(nodes)
 }
