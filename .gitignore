@@ -51,3 +51,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Some of the folders in data-raw
+*/data-raw/
+*/data-prepared/
+*/results/
