@@ -11,10 +11,13 @@ calculate_approved <- function(
     truth_name = "ÅDT.offisiell", 
     model_name = "inla"){
   
+  # If model is given, extract the predictions from model.
   if(!is.null(model)){
     pred <- round(model$summary.fitted.values[, "0.5quant"])
     sd <- round(model$summary.fitted.values[, "sd"])
   }
+  # If neither model nor pred is given, the predictions can be assumed to be in the data.
+  # If so, they are either in the column "balanced_pred" or the column "pred".
   if(is.null(model) & is.null(pred) & is.null(sd)){
     if("balanced_pred" %in% colnames(data)){
       pred <- data$balanced_pred
@@ -23,10 +26,9 @@ calculate_approved <- function(
       pred <- data$pred
       sd <- data$sd
     }
-    
   }
   
-  # Extract predictions
+  # Add predictions to data
   data$pred <- pred
   data$sd <- sd
   
@@ -319,7 +321,10 @@ calculate_approval_metrics <- function(
     data, 
     data_manual, 
     truth_col = "ÅDT.offisiell", 
-    model_name = "inla") {
+    aadt_col = "ÅDT.offisiell",
+    model_name = "inla",
+    is_ratio_model = FALSE,
+    ratio_uncertainty_fn = NULL) {
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # Extract predictions and uncertainties ----
@@ -344,8 +349,12 @@ calculate_approval_metrics <- function(
   data$pred <- pred
   data$sd <- sd
   
-  # Ensure truth column is numeric
+  # Ensure columns are numeric
+  data_manual[[truth_col]][data_manual[[truth_col]] == "null"] <- NA
   data_manual[[truth_col]] <- as.numeric(data_manual[[truth_col]])
+  
+  data_manual[[aadt_col]][data_manual[[aadt_col]] == "null"] <- NA
+  data_manual[[aadt_col]] <- as.numeric(data_manual[[aadt_col]])
   
   # Cap unreasonable standard deviations
   data$sd[is.na(data$sd) | data$sd > 20000] <- 20000
@@ -369,7 +378,19 @@ calculate_approval_metrics <- function(
   combined_data <- data_manual %>% 
     dplyr::full_join(data_undirected, by = dplyr::join_by(ID == parentTrafficLinkId)) %>% 
     dplyr::mutate(!!truth_col := as.numeric(.data[[truth_col]])) %>% 
-    tidyr::drop_na(dplyr::all_of(c(truth_col, "pred"))) %>% 
+    tidyr::drop_na(dplyr::all_of(c(truth_col, "pred")))
+  
+  # If validating a ratio model (e.g., heavy vehicle %), convert to counts
+  if (is_ratio_model) {
+    combined_data <- convert_ratio_to_count(
+      data = combined_data,
+      truth_col = truth_col,
+      aadt_col = aadt_col,
+      ratio_uncertainty_fn = ratio_uncertainty_fn
+    )
+  }
+  
+  combined_data <- combined_data %>%
     dplyr::mutate(
       pred_lower = pred - 1.96 * sd,
       pred_upper = pred + 1.96 * sd,
@@ -377,8 +398,8 @@ calculate_approval_metrics <- function(
         truth = .data[[truth_col]], 
         pred = pred, 
         pred_lower = pred_lower,
-        pred_upper = pred_upper
-      )
+        pred_upper = pred_upper),
+      eale = exp(abs(log(.data[[truth_col]]) - log(pred))) - 1
     )
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -408,12 +429,7 @@ calculate_approval_metrics <- function(
     dplyr::mutate(
       truth_lower = .data[[truth_col]] - 1.96 * estimate_standard_error(.data[[truth_col]]),
       truth_upper = .data[[truth_col]] + 1.96 * estimate_standard_error(.data[[truth_col]]),
-      covered = .data[[truth_col]] > pred_lower & .data[[truth_col]] < pred_upper,
-      eale = exp(abs(log(.data[[truth_col]]) - log(pred))) - 1,
-      eale_threshold = calculate_eale_threshold(pred),
-      approved_eale = eale < eale_threshold,
-      approved_lower_bound = pred_lower < truth_upper,
-      approved_upper_bound = pred_upper > truth_lower
+      covered = .data[[truth_col]] > pred_lower & .data[[truth_col]] < pred_upper
     )
   
   coverage_rate <- sum(segments_without_counters$covered) / nrow(segments_without_counters)
@@ -424,14 +440,18 @@ calculate_approval_metrics <- function(
   
   failure_modes <- segments_without_counters %>%
     dplyr::mutate(
+      eale_threshold = calculate_eale_threshold(pred),
+      approved_eale = eale < eale_threshold,
+      approved_lower_bound = pred_lower < truth_upper,
+      approved_upper_bound = pred_upper > truth_lower,
       fail_eale = !approved_eale,
       fail_lower = !approved_lower_bound,
       fail_upper = !approved_upper_bound
     ) %>%
     dplyr::summarise(
-      pct_fail_eale = mean(fail_eale),
-      pct_fail_lower = mean(fail_lower),
-      pct_fail_upper = mean(fail_upper)
+      pct_fail_eale = mean(fail_eale, na.rm = TRUE),
+      pct_fail_lower = mean(fail_lower, na.rm = TRUE),
+      pct_fail_upper = mean(fail_upper, na.rm = TRUE)
     )
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -440,11 +460,11 @@ calculate_approval_metrics <- function(
   
   eale_stats <- segments_without_counters %>%
     dplyr::summarise(
-      mean_eale = mean(eale),
-      median_eale = median(eale),
-      pct_eale_below_10 = mean(eale < 0.10),  # Very good predictions
-      pct_eale_below_20 = mean(eale < 0.20),  # Good predictions
-      pct_eale_above_50 = mean(eale > 0.50)   # Poor predictions
+      #mean_eale = mean(eale, na.rm = TRUE), # Typically Inf
+      median_eale = median(eale, na.rm = TRUE),
+      pct_eale_below_10 = mean(eale < 0.10, na.rm = TRUE),  # Very good predictions
+      pct_eale_below_20 = mean(eale < 0.20, na.rm = TRUE),  # Good predictions
+      pct_eale_above_50 = mean(eale > 0.50, na.rm = TRUE)   # Poor predictions
     )
   
   # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -479,6 +499,59 @@ calculate_approval_metrics <- function(
 # Calculate standard deviation of sum assuming independence
 calculate_sd_of_sum <- function(sd) {
   return(sqrt(sum(sd^2)))
+}
+
+# Convert ratio-based truth values to counts for validation
+convert_ratio_to_count <- function(data, truth_col, aadt_col, ratio_uncertainty_fn = NULL) {
+  
+  # Extract the ratio and AADT
+  ratio <- data[[truth_col]]
+  aadt <- data[[aadt_col]]
+  
+  # Convert ratio to count
+  count <- ratio * aadt
+  
+  # Estimate uncertainty in the count
+  if (!is.null(ratio_uncertainty_fn)) {
+    # User-provided function to estimate ratio uncertainty
+    ratio_se <- ratio_uncertainty_fn(ratio, aadt)
+  } else {
+    # Default: assume ratio uncertainty scales with ratio and inversely with AADT
+    # This is a placeholder - you should calibrate this based on your data
+    ratio_se <- estimate_ratio_uncertainty(ratio, aadt)
+  }
+  
+  # Estimate AADT uncertainty (reusing existing function)
+  aadt_se <- estimate_standard_error(aadt)
+  
+  # Propagate uncertainty: Var(ratio * aadt) ≈ (ratio * aadt_se)² + (aadt * ratio_se)²
+  count_se <- sqrt((ratio * aadt_se)^2 + (aadt * ratio_se)^2)
+  
+  # Store the converted count as the new truth value
+  data[[truth_col]] <- count
+  
+  # Store the uncertainty for later use in approval checks
+  data[[paste0(truth_col, "_se")]] <- count_se
+  
+  return(data)
+}
+
+# Default function to estimate uncertainty in ratio estimates
+estimate_ratio_uncertainty <- function(ratio, aadt) {
+  # This is a placeholder function - you should calibrate based on your data
+  # Assumptions:
+  # - Lower ratios (rare event) have higher relative uncertainty
+  # - Higher AADT provides more stable ratio estimates
+  # - Returns standard error of the ratio estimate
+  
+  dplyr::case_when(
+    # Very low ratios are less reliable
+    ratio < 0.05 ~ 0.02,
+    ratio < 0.10 ~ 0.015,
+    ratio < 0.20 ~ 0.01,
+    # Higher ratios are more stable
+    TRUE ~ 0.01
+  )
 }
 
 # Check if a prediction meets all autoapproval criteria
@@ -538,7 +611,7 @@ estimate_standard_error <- function(aadt) {
 }
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Segmented Analysis Functions ----
+# Segmented Analysis Function ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Calculate approval rates by segment characteristics
@@ -583,3 +656,79 @@ get_approval_per_group <- function(df, group_name){
     left_join(kommunenavn, by = join_by(Kommunenr == kommunenummer)) 
   return(approval_per_group)
 }
+
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Print Approval Summary ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Extract and display key approval metrics from one or more models
+# Args:
+#   ...: One or more model objects with approval summaries
+# Returns: A tibble with model name, approval rates, and coverage
+print_approval_summary <- function(...) {
+  
+  models <- list(...)
+  
+  # Extract approval summaries from each model
+  summaries <- purrr::map_dfr(models, function(model) {
+    model$diagnostics$approval$summary %>%
+      dplyr::select(model, approval_rate_count, approval_rate_length, coverage_rate)
+  })
+  
+  # Format percentages for readability
+  summaries_formatted <- summaries %>%
+    dplyr::mutate(
+      approval_rate_count = sprintf("%.1f%%", approval_rate_count * 100),
+      approval_rate_length = sprintf("%.1f%%", approval_rate_length * 100),
+      coverage_rate = sprintf("%.1f%%", coverage_rate * 100)
+    )
+  
+  print(summaries_df, row.names = FALSE)
+  
+  # Return the unformatted version for further use
+  invisible(summaries)
+}
+
+# Extract and display key approval metrics from one or more models
+# Args:
+#   ...: One or more model objects with approval summaries
+# Returns: A tibble with model name, approval rates, and coverage
+print_approval_summary <- function(...) {
+  
+  models <- list(...)
+  
+  # If the first (and only) element is a list, unlist it
+  if (length(models) == 1 && is.list(models[[1]])) {
+    models <- models[[1]]
+  }
+  
+  # Extract approval summaries from each model
+  summaries <- purrr::map_dfr(models, function(model) {
+    model$diagnostics$approval$summary %>%
+      dplyr::select(model, approval_rate_count, approval_rate_length, median_eale, coverage_rate)
+  })
+  
+  # Format percentages for readability
+  summaries_formatted <- summaries %>%
+    dplyr::mutate(
+      approval_count = sprintf("%.1f%%", approval_rate_count * 100),
+      approval_length = sprintf("%.1f%%", approval_rate_length * 100),
+      median_eale = sprintf("%.1f%%", median_eale * 100),
+      coverage_rate = sprintf("%.1f%%", coverage_rate * 100)
+    ) %>%
+    dplyr::select(
+      model,
+      approval_count,
+      approval_length,
+      median_eale,
+      coverage_rate
+    )
+  
+  print(summaries_formatted, row.names = FALSE)
+  
+  # Return the unformatted version for further use
+  invisible(summaries)
+}
+
