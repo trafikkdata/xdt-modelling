@@ -51,7 +51,10 @@ saveRDS(preprocessed_data, "data/processed/preprocessed_data.rds")
 # Engineer features ----
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-engineered_data <- preprocessed_data %>% engineer_features(scale_cols = NULL)
+engineered_data <- preprocessed_data %>% engineer_features(
+  columns_to_fill = c("minLanes", "maxLanes", "functionClass", 
+                      "lowestSpeedLimit", "highestSpeedLimit"), 
+  scale_cols = NULL)
 
 saveRDS(engineered_data, "data/processed/engineered_data.rds")
 
@@ -81,8 +84,15 @@ source("R/model_fitting.R")
 adj_sparse <- build_adjacency_matrix(preprocessed_data)
 saveRDS(adj_sparse, "data/processed/adjacency_matrix_2024.rds")
 
-constraint_matrix <- build_flow_constraints(preprocessed_data)
-saveRDS(constraint_matrix, "data/processed/constraint_matrix_2024.rds")
+#constraint_matrix <- build_flow_constraints(preprocessed_data)
+#saveRDS(constraint_matrix, "data/processed/constraint_matrix_2024.rds")
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add road system and I-intersection information to nodes ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# This takes a while to run (15 minuttes?)
+nodes <- identify_unbalancable_nodes()
+saveRDS(nodes, "data/processed/nodes.RDS")
 
 

@@ -16,6 +16,7 @@ data <- readRDS("data/processed/engineered_data.rds")
 aadt2024 <- read.csv("data/raw/traffic-links-aadt-data-2024.csv")
 nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 
+nvdb <- nvdb_objects()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 # Examining ramps ----
@@ -25,8 +26,11 @@ ramps <- dplyr::filter(data, isRamp) %>%
   mutate(
     kd_number = stringr::str_extract(roadSystemReferences, "(?<=KD)\\d+"),   # extract digits after KD
     kd_number = as.integer(kd_number),             # convert to number
-    ramp_type = if_else(is.na(kd_number), NA_character_,
-                        if_else(kd_number %% 2 == 0, "pakjoring", "avkjoring"))
+    ramp_type = case_when(
+      kd_number %in% c(2, 4) ~ "pakjoring",
+      kd_number %in% c(1, 3) ~ "avkjoring",
+      TRUE ~ "verken av eller på"
+    )
   ) %>% add_geometry_to_traffic_links()
 
 

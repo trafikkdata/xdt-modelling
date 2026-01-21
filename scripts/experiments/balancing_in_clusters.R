@@ -29,9 +29,12 @@ nodes <- read_sf("data/raw/traffic-nodes-2024.geojson")
 # Formula to be used
 covariates <- c("functionalRoadClass:maxLanes",
                 "minLanes:roadCategory",
+                "isRamp:functionalRoadClass",
+                "isRamp",
                 "functionalRoadClass",
                 "maxLanes",
-                "roadCategory")
+                "roadCategory",
+                "hasOnlyPublicTransportLanes")
 
 # Explicitly generating the clusters so we can examine them later
 clustered_trond <- strategic_network_clustering(data %>% filter(county == "Trøndelag"))
@@ -59,7 +62,19 @@ saveRDS(list(trondelag_cluster = trondelag_cluster,
              trondelag_in_one = trondelag_in_one), 
         "results/trondelag_cluster_or_not.rds")
 
-trondelag_cluster <- readRDS("results/trondelag_cluster_or_not.rds")$trondelag_cluster
+saved_res <- readRDS("results/trondelag_cluster_or_not.rds")
+trondelag_cluster <- saved_res$trondelag_cluster
+trondelag_in_one <- saved_res$trondelag_in_one
+
+# Total approval rates
+rbind(trondelag_cluster$diagnostics$approval$approved,
+      trondelag_in_one$diagnostics$approval$approved)
+
+# Plot maps
+plot_directed_links(trondelag_cluster$data)
+plot_directed_links(trondelag_in_one$data)
+
+
 
 # In principle, these two calls should produce roughly identical predictions.
 kommunenavn <- read.csv("data/raw/kommunenummer.csv", sep = ";") %>% 
@@ -115,14 +130,6 @@ diff_per_county <- trondelag_comparison %>% group_by(kommunenavn) %>%
             n = n(),
             percent_diff = sum(difference != 0)/n) # Percent of TLs that are different
 
-
-# Total approval rates
-rbind(trondelag_cluster$diagnostics$approval$approved,
-      trondelag_in_one$diagnostics$approval$approved)
-
-# Plot maps
-plot_directed_links(trondelag_cluster$data)
-plot_directed_links(trondelag_in_one$data)
 
 # Approval aggregated by municipality
 approved_trondelag_cluster <- get_approval_per_group(trondelag_cluster$diagnostics$approval$uretta, "Kommunenr")

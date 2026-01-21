@@ -39,10 +39,14 @@ potential_covariates <- c(
   "lowestSpeedLimit", "isNorwegianScenicRoute", "isFerryRoute", "isRamp", 
   "isBlocked", "isInvalid", "yearAppliesTo", "municipalityIds", "countyIds", 
   "roadCategory", "length", "maxLanes", "minLanes", 
-  "hasOnlyPublicTransportLanes", "lastYearAadt", "countyIds")
+  "hasOnlyPublicTransportLanes", "lastYearAadt_trafficVolumeValue", "countyIds")
 
 cov_data <- dplyr::select(data, all_of(c(potential_covariates, "aadt")))
 
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Missing values ----
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Percentage of missing values in each column
 colMeans(is.na(cov_data)) * 100
 
@@ -212,5 +216,8 @@ logical_vars %>% map(~ data %>% group_by(!!sym(.x)) %>% summarise(mean_aadt = ro
 # Probably exclude:
 # isBlocked - Only FALSE values (no variation to model)
 # isInvalid - Very small effect (3,277 vs 1,669) and tiny sample (39 obs).
+
+
+
 
 
