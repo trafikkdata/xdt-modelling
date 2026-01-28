@@ -8,6 +8,12 @@ predictions_total <- readRDS(paste0(path, "data-raw/predictions_total.rds"))
 predictions_heavy <- readRDS(paste0(path, "data-raw/predictions_heavy.rds"))
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Calculate preapproval metrics
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+preapproval <- calculate_preapproval_metrics(data = predictions_total, model_name = "total")
+print_preapproval_summary(preapproval)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Examining total AADT results
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

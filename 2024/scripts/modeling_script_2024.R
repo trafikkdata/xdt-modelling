@@ -25,7 +25,8 @@ prepared_traffic_links <- fill_missing_values(
   df = preprocessed_traffic_links,
   unknown_impute_columns = c("functionClass", "highestSpeedLimit", "lowestSpeedLimit","maxLanes", "minLanes"),
   mode_impute_columns = c("hasOnlyPublicTransportLanes"),
-  median_impute_columns = c("lastYearAadt_aadt", "lastYearAadt_heavyRatio")) |>
+  median_impute_columns = c("lastYearAadt_aadt", "lastYearAadt_heavyRatio", 
+                            "lastYearAadt_heavyAadt")) |>
   add_logLastYear() |>
   join_bus_to_traffic(bus_aadt)
 
