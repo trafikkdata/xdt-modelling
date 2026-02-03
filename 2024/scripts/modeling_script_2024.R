@@ -47,10 +47,10 @@ clusters <- strategic_network_clustering(prepared_traffic_links)
 
 
 # Save everything (prepared_traffic_links, nodes, adjacency matrix, clusters)
-saveRDS(prepared_traffic_links, paste0(raw_path, "prepared/prepared_traffic_links", year, ".rds"))
-saveRDS(nodes, paste0(raw_path, "prepared/prepared_nodes", year, ".rds"))
-saveRDS(adjacency_matrix, paste0(raw_path, "prepared/adjacency_matrix", year, ".rds"))
-saveRDS(clusters, paste0(raw_path, "prepared/clusters", year, ".rds"))
+saveRDS(prepared_traffic_links, paste0(path, "prepared/prepared_traffic_links", year, ".rds"))
+saveRDS(nodes, paste0(path, "prepared/prepared_nodes", year, ".rds"))
+saveRDS(adjacency_matrix, paste0(path, "prepared/adjacency_matrix", year, ".rds"))
+saveRDS(clusters, paste0(path, "prepared/clusters", year, ".rds"))
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
