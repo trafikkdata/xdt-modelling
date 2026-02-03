@@ -1,0 +1,42 @@
+---
+title: "Resultater fra ÅDT-modellen"
+subtitle: "`{r} params$county`"
+format: 
+  pdf:
+    geometry:
+      - margin=2cm
+    fig-width: 7
+    fig-height: 4
+params:
+  county: "Oslo"
+---
+
+Some text here.
+
+```{r}
+library(dplyr)
+library(knitr)
+
+params$county
+year <- 2025
+
+```
+
+
+```{r}
+undirected_results <- readRDS(paste0("../results/undirected_results", year, ".rds")) |> 
+  filter(county == params$county)
+```
+
+```{r}
+#| echo: false
+
+undirected_results |>
+  count(roadCategory) |>
+  arrange(roadCategory) |>
+  kable(
+    col.names = c("Vegkategori", "Antall trafikklenker"),
+    format.args = list(big.mark = " ")
+  )
+```
+
