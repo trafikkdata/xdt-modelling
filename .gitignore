@@ -61,8 +61,8 @@ rsconnect/
 */data-raw/*
 
 # Except these two files
-!*/data-raw/holdeplasspasseringer_entur_2025.csv
-!*/data-raw/Trafikklenker med holdeplasser 2025.csv
+!*/data-raw/holdeplasspasseringer_entur_*
+!*/data-raw/trafikklenker_med_holdeplasser_*
 
 # Ignore prepared data and results
 */data-prepared/

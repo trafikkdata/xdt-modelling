@@ -16,7 +16,7 @@ missing_counts[missing_counts > 0]
 
 
 # Bus data: Load and preprocess
-stops_on_traffic_links <- read.csv(paste0(path, "data-raw/Trafikklenker med holdeplasser ", year, ".csv"))
+stops_on_traffic_links <- read.csv(paste0(path, "data-raw/trafikklenker_med_holdeplasser ", year, ".csv"))
 bus_counts <- read.csv(paste0(path, "data-raw/holdeplasspasseringer_entur_", year, ".csv"))
 
 bus_aadt <- calculate_bus_aadt(stops_on_traffic_links, bus_counts, year = year)
