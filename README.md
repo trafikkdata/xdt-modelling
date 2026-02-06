@@ -17,5 +17,6 @@ xdt-modelling/
     |   ├── prepared_nodes20xx.rds                    # Noder med ekstra kolonner som angir hvilke som skal balanseres
     |   └── prepared_traffic_links20xx.rds            # Preparerte trafikklenker, klar for modellering.
     ├── results/            
-    └── scripts/            
+    └── scripts/
+        └── modeling_script_20xx.R                    # Modelleringsscriptet som brukes til ÅDT-belegginga
 ```
