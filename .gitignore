@@ -52,8 +52,20 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Some of the folders in data-raw
-*/data-raw/
+# Special ignoring of raw data file to allow the bus data to be pushed to git:
+
+# Don't ignore the data-raw directories themselves
+!*/data-raw/
+
+# But ignore everything inside them
+*/data-raw/*
+
+# Except these two files
+!*/data-raw/holdeplasspasseringer_entur_2025.csv
+!*/data-raw/Trafikklenker med holdeplasser 2025.csv
+
+# Ignore prepared data and results
 */data-prepared/
 */results/
 */reports/output
+
